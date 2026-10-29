@@ -385,7 +385,9 @@ function Game({ code, session }: { code: string; session: Session }) {
                 : pub.discardFree
                   ? "Te jössz! Húzz a pakliból vagy vedd fel a dobott lapot."
                   : `Te jössz! A dobott lapot csak akkor veheted fel, ha vele együtt legalább ${OPEN_MIN} ponttal lepakolsz.`
-              : pub.mustOpen
+              : pub.firstTurn && pub.discardCount === 0
+                ? "Te kezdesz! Válassz ki és dobj el egy lapot (lepakolhatsz is, ha megvan az 51 pont)."
+                : pub.mustOpen
                 ? `Pakolj le legalább ${OPEN_MIN} ponttal a felvett (keretezett) lappal együtt, vagy tedd vissza.`
               : me?.opened
                 ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
@@ -453,7 +455,7 @@ function Game({ code, session }: { code: string; session: Session }) {
               card={c}
               selected={selected.includes(c.id)}
               onClick={() => toggle(c.id)}
-              className={cn("animate-deal", c.id === takenFromDiscard && "ring-2 ring-primary")}
+              className={cn("animate-deal", c.id === takenFromDiscard && "outline-[3px] outline-solid outline-offset-2 outline-primary")}
             />
           ))}
         </div>
