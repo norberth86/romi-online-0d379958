@@ -371,6 +371,8 @@ export type PublicState = {
   /** Whether the player to move may freely take the discard (own first turn or already opened). */
   discardFree: boolean;
   mustOpen: boolean;
+  /** The player to move is in their own first turn of the round. */
+  firstTurn: boolean;
   discardRefused: boolean;
   log: string[];
   v: number;
@@ -395,6 +397,7 @@ export function toPublic(s: GameState): PublicState {
     lastRoundPoints: s.lastRoundPoints,
     discardFree: !!s.players[s.turn] && (!s.players[s.turn]!.firstTurnDone || s.players[s.turn]!.opened),
     mustOpen: !!s.mustOpenWith,
+    firstTurn: !!s.players[s.turn] && !s.players[s.turn]!.firstTurnDone,
     discardRefused: !!s.discardRefused,
     revealedHands: s.status === "finished" ? s.players.map((p) => p?.hand ?? []) : null,
     log: s.log,
