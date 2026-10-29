@@ -85,7 +85,7 @@ describe("discard pickup rule (per player first turn)", () => {
   function started() {
     const s = game();
     // Starter (0) discards on their first move.
-    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0].id });
+    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id });
     return s;
   }
   it("second player may freely take the discard on their own first turn", () => {
@@ -104,9 +104,9 @@ describe("discard pickup rule (per player first turn)", () => {
     applyAction(s, 1, { type: "discard", cardId: "H5" });
     applyAction(s, 0, { type: "takeDiscard" });
     expect(s.mustOpenWith).toBe("H5");
-    expect(() => applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0].id })).toThrow(/51/);
+    expect(() => applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id })).toThrow(/51/);
     applyAction(s, 0, { type: "returnDiscard" });
-    expect(s.discard[s.discard.length - 1].id).toBe("H5");
+    expect(s.discard[s.discard.length - 1]!.id).toBe("H5");
     expect(() => applyAction(s, 0, { type: "takeDiscard" })).toThrow();
     applyAction(s, 0, { type: "drawStock" });
     expect(s.players[0]!.hand).toHaveLength(15);
@@ -114,16 +114,16 @@ describe("discard pickup rule (per player first turn)", () => {
   it("second player from their own 2nd turn is also restricted", () => {
     const s = started();
     applyAction(s, 1, { type: "drawStock" });
-    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0].id });
+    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0]!.id });
     applyAction(s, 0, { type: "drawStock" });
-    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0].id });
+    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id });
     applyAction(s, 1, { type: "takeDiscard" });
     expect(s.mustOpenWith).not.toBeNull();
   });
   it("restricted pickup succeeds when opening ≥51 with the card", () => {
     const s = started();
     applyAction(s, 1, { type: "drawStock" });
-    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0].id });
+    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0]!.id });
     s.discard.push(c("H13"));
     s.players[0]!.hand = cs("H11", "H12", "S10", "D10", "C10", "S2", "D4");
     applyAction(s, 0, { type: "takeDiscard" });
@@ -137,9 +137,9 @@ describe("discard pickup rule (per player first turn)", () => {
     const s = started();
     s.players[1]!.opened = true;
     applyAction(s, 1, { type: "drawStock" });
-    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0].id });
+    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0]!.id });
     applyAction(s, 0, { type: "drawStock" });
-    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0].id });
+    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id });
     applyAction(s, 1, { type: "takeDiscard" });
     expect(s.mustOpenWith).toBeNull();
   });
@@ -147,7 +147,7 @@ describe("discard pickup rule (per player first turn)", () => {
     const s = started();
     expect(total(s)).toBe(108);
     applyAction(s, 1, { type: "drawStock" });
-    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0].id });
+    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0]!.id });
     applyAction(s, 0, { type: "takeDiscard" });
     applyAction(s, 0, { type: "returnDiscard" });
     applyAction(s, 0, { type: "drawStock" });
