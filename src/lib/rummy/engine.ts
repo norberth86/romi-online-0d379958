@@ -22,7 +22,7 @@ export function shuffle<T>(arr: T[], rand: () => number = secureRandom): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+    [a[i], a[j]] = [a[j]!, a[i]!];
   }
   return a;
 }
@@ -30,7 +30,7 @@ export function shuffle<T>(arr: T[], rand: () => number = secureRandom): T[] {
 function secureRandom() {
   const b = new Uint32Array(1);
   crypto.getRandomValues(b);
-  return b[0] / 2 ** 32;
+  return b[0]! / 2 ** 32;
 }
 
 /** Penalty value of a card left in hand. */
@@ -57,7 +57,7 @@ function analyzeSet(cards: Card[]): Analysis {
   const jok = cards.length - nat.length;
   if (cards.length < 3 || cards.length > 4) return { ok: false, reason: "Egy sor 3–4 lapból áll." };
   if (nat.length === 0 || jok > nat.length) return { ok: false, reason: "Túl sok joker." };
-  const rank = nat[0].rank;
+  const rank = nat[0]!.rank;
   if (nat.some((c) => c.rank !== rank)) return { ok: false, reason: "Nem azonos értékűek." };
   if (new Set(nat.map((c) => c.suit)).size !== nat.length) return { ok: false, reason: "Ismétlődő szín a sorban." };
   const v = rank === 1 ? 10 : rank >= 10 ? 10 : rank;
@@ -71,13 +71,13 @@ function analyzeRun(cards: Card[]): Analysis {
   if (len < 3) return { ok: false, reason: "Legalább 3 lap kell." };
   if (len > 13) return { ok: false, reason: "Túl hosszú sorozat." };
   if (nat.length === 0 || jokers.length > nat.length) return { ok: false, reason: "Túl sok joker." };
-  if (nat.some((c) => c.suit !== nat[0].suit)) return { ok: false, reason: "Nem azonos színűek." };
+  if (nat.some((c) => c.suit !== nat[0]!.suit)) return { ok: false, reason: "Nem azonos színűek." };
   for (const aceHigh of [false, true]) {
     const mapped = nat.map((c) => ({ c, r: c.rank === 1 && aceHigh ? 14 : c.rank })).sort((a, b) => a.r - b.r);
     const rs = mapped.map((m) => m.r);
     if (new Set(rs).size !== rs.length) return { ok: false, reason: "Ismétlődő lap a sorozatban." };
-    const min = rs[0];
-    const max = rs[rs.length - 1];
+    const min = rs[0]!;
+    const max = rs[rs.length - 1]!;
     const span = max - min + 1;
     if (span > len) continue;
     const extra = len - span;
@@ -90,7 +90,7 @@ function analyzeRun(cards: Card[]): Analysis {
     let points = 0;
     for (let p = lo; p <= hi; p++) {
       const m = mapped.find((x) => x.r === p);
-      ordered.push(m ? m.c : jokers[j++]);
+      ordered.push(m ? m.c : jokers[j++]!);
       points += posValue(p);
     }
     return { ok: true, kind: "run", points, ordered };
@@ -322,7 +322,7 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (s.phase !== "play") throw new RuleError("Előbb húzz egy lapot.");
       if (s.mustOpenWith) throw new RuleError(`A felvett lappal le kell pakolnod legalább ${OPEN_MIN} ponttal, vagy tedd vissza.`);
       if (a.cardId === s.takenFromDiscard) throw new RuleError("A most felvett lapot nem dobhatod vissza.");
-      const [c] = takeFromHand(me, [a.cardId]);
+      const c = takeFromHand(me, [a.cardId])[0]!;
       removeFromHand(me, [c.id]);
       s.discard.push(c);
       s.takenFromDiscard = null;
@@ -339,7 +339,7 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
     }
     case "returnDiscard": {
       if (s.phase !== "play" || !s.mustOpenWith) throw new RuleError("Nincs visszatehető lap.");
-      const [c] = takeFromHand(me, [s.mustOpenWith]);
+      const c = takeFromHand(me, [s.mustOpenWith])[0]!;
       removeFromHand(me, [c.id]);
       s.discard.push(c);
       s.mustOpenWith = null;
