@@ -133,6 +133,7 @@ const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("meld"), cardIds: z.array(z.string()).min(3).max(13) }),
   z.object({ type: z.literal("layoff"), meldId: z.string(), cardIds: z.array(z.string()).min(1).max(10) }),
   z.object({ type: z.literal("discard"), cardId: z.string() }),
+  z.object({ type: z.literal("returnDiscard") }),
 ]);
 
 export const playAction = createServerFn({ method: "POST" })

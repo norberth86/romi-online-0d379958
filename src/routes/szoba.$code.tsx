@@ -358,7 +358,7 @@ function Game({ code, session }: { code: string; session: Session }) {
           <button
             type="button"
             onClick={() => act({ type: "takeDiscard" })}
-            disabled={!(myTurn && pub.phase === "draw") || !pub.discardTop || busy}
+            disabled={!(myTurn && pub.phase === "draw") || !pub.discardTop || pub.discardRefused || busy}
             className={cn("relative rounded-lg", myTurn && pub.phase === "draw" && pub.discardTop && "animate-turn")}
             aria-label="Dobott lap felvétele"
           >
@@ -380,12 +380,24 @@ function Game({ code, session }: { code: string; session: Session }) {
           ? "A játszma véget ért"
           : myTurn
             ? pub.phase === "draw"
-              ? "Te jössz! Húzz a pakliból vagy vedd fel a dobott lapot."
+              ? pub.discardRefused
+                ? "Húzz egy lapot a pakliból."
+                : pub.discardFree
+                  ? "Te jössz! Húzz a pakliból vagy vedd fel a dobott lapot."
+                  : `Te jössz! A dobott lapot csak akkor veheted fel, ha vele együtt legalább ${OPEN_MIN} ponttal lepakolsz.`
+              : pub.mustOpen
+                ? `Pakolj le legalább ${OPEN_MIN} ponttal a felvett (keretezett) lappal együtt, vagy tedd vissza.`
               : me?.opened
                 ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
                 : `Lepakoláshoz gyűjts legalább ${OPEN_MIN} pontot, majd dobj el egy lapot.`
             : `${them?.name ?? "Az ellenfél"} következik…`}
       </div>
+
+      {canPlay && pub.mustOpen && (
+        <Button variant="felt" className="w-full" disabled={busy} onClick={() => act({ type: "returnDiscard" })}>
+          <X /> Visszateszem a dobott lapot
+        </Button>
+      )}
 
       {/* Staging for first meld */}
       {staged.length > 0 && (
@@ -412,7 +424,7 @@ function Game({ code, session }: { code: string; session: Session }) {
         <Button variant="felt" size="xl" className="px-2 text-sm" onClick={onMeldButton} disabled={!canPlay || busy || selected.length < 3}>
           <Layers /> {me?.opened ? "Lerak" : "Előkészít"}
         </Button>
-        <Button variant="gold" size="xl" className="px-2 text-sm" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1}>
+        <Button variant="gold" size="xl" className="px-2 text-sm" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen}>
           <Trash2 /> Eldob
         </Button>
         <Button variant="felt" size="xl" className="px-2 text-sm" onClick={() => sortHand("suit")}>
