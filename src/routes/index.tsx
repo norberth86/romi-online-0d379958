@@ -47,7 +47,7 @@ function Home() {
     setBusy("create");
     const r = await createRoom({ data: { name: name.trim() } }).catch(() => null);
     setBusy(null);
-    if (!r?.ok) return toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
+    if (!r?.ok) return void toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
     setSession(r.data.code, { token: r.data.token, seat: r.data.seat });
     navigate({ to: "/szoba/$code", params: { code: r.data.code } });
   };
@@ -55,11 +55,11 @@ function Home() {
   const onJoin = async () => {
     if (needName()) return;
     const c = code.trim().toUpperCase();
-    if (c.length !== 5) return toast.error("A szobakód 5 karakter.");
+    if (c.length !== 5) return void toast.error("A szobakód 5 karakter.");
     setBusy("join");
     const r = await joinRoom({ data: { code: c, name: name.trim() } }).catch(() => null);
     setBusy(null);
-    if (!r?.ok) return toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
+    if (!r?.ok) return void toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
     setSession(c, { token: r.data.token, seat: r.data.seat });
     navigate({ to: "/szoba/$code", params: { code: c } });
   };

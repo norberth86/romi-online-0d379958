@@ -47,12 +47,12 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (s: Session) => 
   const [busy, setBusy] = useState(false);
   useEffect(() => setName(getSavedName()), []);
   const join = async () => {
-    if (!name.trim()) return toast.error("Add meg a neved!");
+    if (!name.trim()) return void toast.error("Add meg a neved!");
     saveName(name.trim());
     setBusy(true);
     const r = await joinRoom({ data: { code, name: name.trim() } }).catch(() => null);
     setBusy(false);
-    if (!r?.ok) return toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
+    if (!r?.ok) return void toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
     const s = { token: r.data.token, seat: r.data.seat };
     setSession(code, s);
     onJoined(s);
@@ -76,7 +76,7 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (s: Session) => 
 
 // ------------------------------------------------------------
 type SortMode = "suit" | "rank";
-const SUIT_ORDER: Record<string, number> = { S: 0, H: 1, C: 2, D: 3, X: 4 };
+const SUIT_ORDER: Record<Card["suit"], number> = { S: 0, H: 1, C: 2, D: 3, X: 4 };
 
 function Game({ code, session }: { code: string; session: Session }) {
   const [pub, setPub] = useState<PublicState | null>(null);
@@ -222,7 +222,7 @@ function Game({ code, session }: { code: string; session: Session }) {
   };
 
   const onMeldButton = async () => {
-    if (!selAnalysis?.ok) return toast.error(selAnalysis && !selAnalysis.ok ? selAnalysis.reason : "Válassz ki legalább 3 lapot.");
+    if (!selAnalysis?.ok) return void toast.error(selAnalysis && !selAnalysis.ok ? selAnalysis.reason : "Válassz ki legalább 3 lapot.");
     if (!me?.opened) {
       setStaged((g) => [...g, selected]);
       setSelected([]);
@@ -239,14 +239,14 @@ function Game({ code, session }: { code: string; session: Session }) {
   };
 
   const onDiscard = async () => {
-    if (selected.length !== 1) return toast.error("Pontosan egy lapot válassz ki az eldobáshoz.");
+    if (selected.length !== 1) return void toast.error("Pontosan egy lapot válassz ki az eldobáshoz.");
     if (staged.length) setStaged([]);
-    if (await act({ type: "discard", cardId: selected[0] })) setSelected([]);
+    if (await act({ type: "discard", cardId: selected[0]! })) setSelected([]);
   };
 
   const onMeldTap = async (meldId: string) => {
     if (!canPlay || !selected.length) return;
-    if (!me?.opened) return toast.error("Hozzárakni csak lepakolás után lehet.");
+    if (!me?.opened) return void toast.error("Hozzárakni csak lepakolás után lehet.");
     if (await act({ type: "layoff", meldId, cardIds: selected })) setSelected([]);
   };
 
@@ -468,7 +468,7 @@ function Game({ code, session }: { code: string; session: Session }) {
   );
 }
 
-function StatusBar({ code, rt, oppOnline, oppName, round }: { code: string; rt: string; oppOnline: boolean; oppName?: string; round: number }) {
+function StatusBar({ code, rt, oppOnline, oppName, round }: { code: string; rt: string; oppOnline: boolean; oppName?: string | undefined; round: number }) {
   return (
     <header className="flex items-center justify-between gap-2 px-1 text-xs">
       <Link to="/" className="text-gold font-display text-base font-bold">Römi</Link>
