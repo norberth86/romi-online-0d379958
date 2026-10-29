@@ -5,7 +5,8 @@ export type MeldKind = "set" | "run";
 export type Meld = { id: string; owner: number; kind: MeldKind; cards: Card[] };
 
 export const OPEN_MIN = 51;
-export const HAND_SIZE = 13;
+export const STARTER_HAND = 15;
+export const SECOND_HAND = 14;
 const SUITS: Suit[] = ["S", "H", "D", "C"];
 
 export function makeDeck(): Card[] {
@@ -35,13 +36,13 @@ function secureRandom() {
 /** Penalty value of a card left in hand. */
 export function handValue(c: Card): number {
   if (c.suit === "X") return 20;
-  if (c.rank === 1) return 11;
+  if (c.rank === 1) return 10;
   return c.rank >= 10 ? 10 : c.rank;
 }
 
 function posValue(pos: number) {
   if (pos === 1) return 1;
-  if (pos === 14) return 11;
+  if (pos === 14) return 10;
   return pos >= 10 ? 10 : pos;
 }
 
@@ -59,7 +60,7 @@ function analyzeSet(cards: Card[]): Analysis {
   const rank = nat[0].rank;
   if (nat.some((c) => c.rank !== rank)) return { ok: false, reason: "Nem azonos értékűek." };
   if (new Set(nat.map((c) => c.suit)).size !== nat.length) return { ok: false, reason: "Ismétlődő szín a sorban." };
-  const v = rank === 1 ? 11 : rank >= 10 ? 10 : rank;
+  const v = rank === 1 ? 10 : rank >= 10 ? 10 : rank;
   return { ok: true, kind: "set", points: v * cards.length, ordered: [...nat, ...cards.filter(isJoker)] };
 }
 
@@ -116,6 +117,8 @@ export type Player = {
   score: number;
   ready: boolean;
   rematch: boolean;
+  /** Per-player: has this player finished their own first turn in the current round? */
+  firstTurnDone?: boolean;
 };
 
 export type GameState = {
@@ -133,6 +136,10 @@ export type GameState = {
   winner: number | null;
   lastRoundPoints: number;
   takenFromDiscard: string | null;
+  /** Card taken from discard that must be part of the 51-point opening this turn. */
+  mustOpenWith?: string | null;
+  /** Player put the discard back this turn and must draw from stock. */
+  discardRefused?: boolean;
   meldCounter: number;
   log: string[];
 };
@@ -145,6 +152,7 @@ export type Action =
   | { type: "meld"; cardIds: string[] }
   | { type: "layoff"; meldId: string; cardIds: string[] }
   | { type: "discard"; cardId: string }
+  | { type: "returnDiscard" }
   | { type: "rematch" };
 
 export class RuleError extends Error {}
@@ -163,19 +171,23 @@ function log(s: GameState, msg: string) {
 
 export function deal(s: GameState, rand?: () => number) {
   const deck = shuffle(makeDeck(), rand);
-  for (const p of s.players) {
+  s.players.forEach((p, i) => {
     if (!p) throw new RuleError("Hiányzik a második játékos.");
-    p.hand = deck.splice(0, HAND_SIZE);
+    p.hand = deck.splice(0, i === s.starter ? STARTER_HAND : SECOND_HAND);
     p.opened = false;
     p.ready = false;
     p.rematch = false;
-  }
-  s.discard = deck.splice(0, 1);
+    p.firstTurnDone = false;
+  });
+  s.discard = [];
   s.stock = deck;
   s.melds = [];
   s.status = "playing";
   s.turn = s.starter;
-  s.phase = "draw";
+  // The starter holds 15 cards, so their first move is to discard (no draw).
+  s.phase = "play";
+  s.mustOpenWith = null;
+  s.discardRefused = false;
   s.winner = null;
   s.takenFromDiscard = null;
   s.round += 1;
@@ -245,11 +257,15 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
     }
     case "takeDiscard": {
       if (s.phase !== "draw") throw new RuleError("Már húztál ebben a körben.");
+      if (s.discardRefused) throw new RuleError("Most a pakliból kell húznod.");
       const top = s.discard.pop();
       if (!top) throw new RuleError("Üres a dobott lapok pakli.");
       me.hand.push(top);
       s.phase = "play";
       s.takenFromDiscard = top.id;
+      // From a player's own second turn on, an unopened player may only take the
+      // discard if they open (≥51) with it in this same turn.
+      s.mustOpenWith = me.firstTurnDone && !me.opened ? top.id : null;
       log(s, `${me.name} felvette a dobott lapot.`);
       return s;
     }
@@ -259,6 +275,8 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (!a.groups.length) throw new RuleError("Nincs kiválasztott kombináció.");
       const all = a.groups.flat();
       takeFromHand(me, all);
+      if (s.mustOpenWith && !all.includes(s.mustOpenWith))
+        throw new RuleError("A felvett dobott lapot fel kell használnod a lepakolásban.");
       let total = 0;
       const melds: Meld[] = [];
       for (const g of a.groups) {
@@ -271,6 +289,7 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       removeFromHand(me, all);
       s.melds.push(...melds);
       me.opened = true;
+      s.mustOpenWith = null;
       log(s, `${me.name} lepakolt ${total} ponttal.`);
       if (me.hand.length === 0) finishRound(s, seat);
       return s;
@@ -301,11 +320,14 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
     }
     case "discard": {
       if (s.phase !== "play") throw new RuleError("Előbb húzz egy lapot.");
+      if (s.mustOpenWith) throw new RuleError(`A felvett lappal le kell pakolnod legalább ${OPEN_MIN} ponttal, vagy tedd vissza.`);
       if (a.cardId === s.takenFromDiscard) throw new RuleError("A most felvett lapot nem dobhatod vissza.");
       const [c] = takeFromHand(me, [a.cardId]);
       removeFromHand(me, [c.id]);
       s.discard.push(c);
       s.takenFromDiscard = null;
+      s.discardRefused = false;
+      me.firstTurnDone = true;
       log(s, `${me.name} eldobott egy lapot.`);
       if (me.hand.length === 0) {
         finishRound(s, seat);
@@ -313,6 +335,18 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
         s.turn = 1 - seat;
         s.phase = "draw";
       }
+      return s;
+    }
+    case "returnDiscard": {
+      if (s.phase !== "play" || !s.mustOpenWith) throw new RuleError("Nincs visszatehető lap.");
+      const [c] = takeFromHand(me, [s.mustOpenWith]);
+      removeFromHand(me, [c.id]);
+      s.discard.push(c);
+      s.mustOpenWith = null;
+      s.takenFromDiscard = null;
+      s.discardRefused = true;
+      s.phase = "draw";
+      log(s, `${me.name} visszatette a dobott lapot.`);
       return s;
     }
   }
@@ -334,6 +368,10 @@ export type PublicState = {
   winner: number | null;
   lastRoundPoints: number;
   revealedHands: Card[][] | null;
+  /** Whether the player to move may freely take the discard (own first turn or already opened). */
+  discardFree: boolean;
+  mustOpen: boolean;
+  discardRefused: boolean;
   log: string[];
   v: number;
 };
@@ -355,6 +393,9 @@ export function toPublic(s: GameState): PublicState {
     round: s.round,
     winner: s.winner,
     lastRoundPoints: s.lastRoundPoints,
+    discardFree: !!s.players[s.turn] && (!s.players[s.turn]!.firstTurnDone || s.players[s.turn]!.opened),
+    mustOpen: !!s.mustOpenWith,
+    discardRefused: !!s.discardRefused,
     revealedHands: s.status === "finished" ? s.players.map((p) => p?.hand ?? []) : null,
     log: s.log,
     v: s.v,
