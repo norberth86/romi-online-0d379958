@@ -10,9 +10,9 @@ import { getSavedName, saveName, setSession } from "@/lib/rummy/session";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Kétfős Römi Online – játssz két telefonon" },
+      { title: "Römi Online – játssz két telefonon" },
       { name: "description", content: "Kétszemélyes magyar römi valós időben, két külön telefonon. Hozz létre szobát, oszd meg a kódot, és játsszatok!" },
-      { property: "og:title", content: "Kétfős Römi Online" },
+      { property: "og:title", content: "Römi Online" },
       { property: "og:description", content: "Kétszemélyes magyar römi valós időben, két külön telefonon." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -26,6 +26,7 @@ function Home() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
+  const [size, setSize] = useState(2);
 
   useEffect(() => {
     setName(getSavedName());
@@ -45,7 +46,7 @@ function Home() {
   const onCreate = async () => {
     if (needName()) return;
     setBusy("create");
-    const r = await createRoom({ data: { name: name.trim() } }).catch(() => null);
+    const r = await createRoom({ data: { name: name.trim(), size } }).catch(() => null);
     setBusy(null);
     if (!r?.ok) return void toast.error(r?.error ?? "Nem sikerült a kapcsolat.");
     setSession(r.data.code, { token: r.data.token, seat: r.data.seat });
@@ -72,8 +73,8 @@ function Home() {
           <PlayingCard card={{ id: "b", suit: "X", rank: 0 }} className="z-10 -translate-y-2" />
           <PlayingCard card={{ id: "c", suit: "S", rank: 13 }} className="rotate-12 -translate-x-3" />
         </div>
-        <h1 className="text-gold text-4xl font-bold leading-tight">Kétfős Römi Online</h1>
-        <p className="mt-2 text-muted-foreground">Két telefon, egy asztal. Valós idejű römi.</p>
+        <h1 className="text-gold text-4xl font-bold leading-tight">Römi Online</h1>
+        <p className="mt-2 text-muted-foreground">2–4 telefon, egy asztal. Valós idejű römi.</p>
       </header>
 
       <section className="felt-panel space-y-5 p-5">
@@ -81,6 +82,16 @@ function Home() {
           <span className="text-sm font-semibold">A neved</span>
           <Input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="pl. Kata" className="h-12 text-base" />
         </label>
+        <div className="space-y-2">
+          <span className="text-sm font-semibold">Játékosok száma</span>
+          <div className="grid grid-cols-3 gap-2">
+            {[2, 3, 4].map((n) => (
+              <Button key={n} variant={size === n ? "gold" : "felt"} onClick={() => setSize(n)} aria-pressed={size === n}>
+                {n} fő
+              </Button>
+            ))}
+          </div>
+        </div>
         <Button variant="gold" size="xl" className="w-full" onClick={onCreate} disabled={!!busy}>
           {busy === "create" ? "Szoba létrehozása…" : "Új szoba létrehozása"}
         </Button>
@@ -104,14 +115,14 @@ function Home() {
       <details className="felt-panel p-4 text-sm text-muted-foreground">
         <summary className="cursor-pointer font-semibold text-foreground">Szabályok röviden</summary>
         <ul className="mt-3 list-disc space-y-1.5 pl-5">
-          <li>2 pakli francia kártya + 4 joker. A kezdő 15, a másik játékos 14 lapot kap; a kezdő első lépése a dobás.</li>
+          <li>2–4 játékos, 2 pakli francia kártya + 4 joker. A kezdő 15, a többiek 14 lapot kapnak; a kezdő első lépése a dobás.</li>
           <li>A körödben húzz egyet a pakliból vagy vedd fel a legfelső dobott lapot.</li>
           <li>A saját első körödben a dobott lapot szabadon felveheted. Később, amíg nem pakoltál le, csak akkor, ha vele együtt azonnal legalább 51 ponttal lepakolsz.</li>
           <li>Sor: 3–4 azonos értékű, különböző színű lap. Sorozat: legalább 3 egymást követő, azonos színű lap.</li>
           <li>Az első lepakolás legalább 51 pont legyen (ász 10, de A-2-3-ban 1; figurák 10; joker a helyettesített lap értéke).</li>
           <li>Lepakolás után új kombinációt rakhatsz, vagy bármelyik asztali kombinációhoz hozzárakhatsz.</li>
           <li>A kör végén dobj el egy lapot. Aki elsőként kifogy a lapokból, nyer.</li>
-          <li>A győztes megkapja az ellenfél kezében maradt lapok pontját (dupla, ha az ellenfél nem pakolt le).</li>
+          <li>Aki kimegy, nem kap pontot; a többiek a kezükben maradt lapok értékét kapják büntetőpontként (dupla, ha nem pakoltak le; ha a nyertes kézből ment ki, mindenkinek dupla). A kevesebb pont a jobb.</li>
         </ul>
       </details>
     </main>

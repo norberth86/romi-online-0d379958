@@ -92,7 +92,6 @@ function Game({ code, session }: { code: string; session: Session }) {
   const handV = useRef(-1);
   const pubV = useRef(-1);
   const seat = session.seat;
-  const opp = 1 - seat;
 
   const applyHand = useCallback((h: Card[], v: number, taken: string | null) => {
     if (v < handV.current) return;
@@ -200,7 +199,8 @@ function Game({ code, session }: { code: string; session: Session }) {
   if (!pub) return <Centered>Kapcsolódás a szobához…</Centered>;
 
   const me = pub.players[seat];
-  const them = pub.players[opp];
+  const opps = pub.players.flatMap((p, i) => (p && i !== seat ? [{ p, i }] : []));
+  const turnName = pub.players[pub.turn]?.name;
   const myTurn = pub.status === "playing" && pub.turn === seat;
   const canPlay = myTurn && pub.phase === "play";
   const selCards = selected.map((id) => byId.get(id)!).filter(Boolean);
@@ -264,7 +264,7 @@ function Game({ code, session }: { code: string; session: Session }) {
   };
 
   const status = (
-    <StatusBar code={code} rt={rtStatus} oppOnline={online.has(opp)} oppName={them?.name} round={pub.round} />
+    <StatusBar code={code} rt={rtStatus} onlineCount={opps.filter((o) => online.has(o.i)).length} oppCount={opps.length} round={pub.round} />
   );
 
   // ---------------- Lobby ----------------
@@ -286,14 +286,14 @@ function Game({ code, session }: { code: string; session: Session }) {
           </div>
         </section>
         <section className="felt-panel divide-y divide-border">
-          {[0, 1].map((i) => {
+          {pub.players.map((_, i) => {
             const p = pub.players[i];
             return (
               <div key={i} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <PresenceDot on={i === seat || online.has(i)} hidden={!p} />
                   <span className={cn("font-semibold", !p && "text-muted-foreground italic")}>
-                    {p ? p.name : "Várakozás a második játékosra…"}
+                    {p ? p.name : "Várakozás egy játékosra…"}
                     {i === seat && <span className="ml-2 text-xs text-muted-foreground">(te)</span>}
                   </span>
                 </div>
@@ -309,40 +309,49 @@ function Game({ code, session }: { code: string; session: Session }) {
         <Button variant={me?.ready ? "felt" : "gold"} size="xl" onClick={() => act({ type: "ready" })} disabled={busy}>
           {me?.ready ? "Mégsem vagyok kész" : "Kész vagyok"}
         </Button>
-        <p className="text-center text-sm text-muted-foreground">A játék akkor indul, ha mindketten készen álltok.</p>
+        <p className="text-center text-sm text-muted-foreground">
+          {pub.players.length} fős szoba. A játék akkor indul, ha legalább ketten vagytok és minden csatlakozott játékos kész.
+        </p>
       </main>
     );
   }
 
   // ---------------- Table ----------------
-  const oppMelds = pub.melds.filter((m) => m.owner === opp);
   const myMelds = pub.melds.filter((m) => m.owner === seat);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-2 px-2 pb-2 pt-2 sm:px-4">
       {status}
 
-      {/* Opponent */}
-      <section className={cn("felt-panel flex items-center justify-between gap-3 px-3 py-2", pub.turn === opp && pub.status === "playing" && "animate-turn")}>
-        <div className="flex min-w-0 items-center gap-2">
-          <PresenceDot on={online.has(opp)} />
-          <div className="min-w-0">
-            <p className="truncate font-bold">{them?.name ?? "Ellenfél"}</p>
-            <p className="text-xs text-muted-foreground">
-              {them?.handCount ?? 0} lap · {them?.score ?? 0} pont {them?.opened ? "· lepakolt" : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex -space-x-6">
-          {Array.from({ length: Math.min(them?.handCount ?? 0, 10) }).map((_, i) => (
-            <CardBack key={i} size="xs" />
-          ))}
-        </div>
-      </section>
+      {/* Opponents */}
+      <div className={cn("grid gap-2", opps.length > 1 ? "grid-cols-" + opps.length : "grid-cols-1")}>
+        {opps.map(({ p, i }) => (
+          <section key={i} className={cn("felt-panel flex items-center justify-between gap-2 px-3 py-2", pub.turn === i && pub.status === "playing" && "animate-turn")}>
+            <div className="flex min-w-0 items-center gap-2">
+              <PresenceDot on={online.has(i)} />
+              <div className="min-w-0">
+                <p className="truncate font-bold">{p.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {p.handCount} lap · {p.score} bp {p.opened ? "· lepakolt" : ""}
+                </p>
+              </div>
+            </div>
+            {opps.length === 1 && (
+              <div className="flex -space-x-6">
+                {Array.from({ length: Math.min(p.handCount, 10) }).map((_, k) => (
+                  <CardBack key={k} size="xs" />
+                ))}
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
 
       {/* Table */}
       <section className="flex flex-1 flex-col gap-2 rounded-2xl border border-border p-2" style={{ minHeight: 0 }}>
-        <MeldRow melds={oppMelds} label={`${them?.name ?? "Ellenfél"} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
+        {opps.map(({ p, i }) => (
+          <MeldRow key={i} melds={pub.melds.filter((m) => m.owner === i)} label={`${p.name} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
+        ))}
 
         <div className="flex items-center justify-center gap-6 py-2">
           <button
@@ -392,7 +401,7 @@ function Game({ code, session }: { code: string; session: Session }) {
               : me?.opened
                 ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
                 : `Lepakoláshoz gyűjts legalább ${OPEN_MIN} pontot, majd dobj el egy lapot.`
-            : `${them?.name ?? "Az ellenfél"} következik…`}
+            : `${turnName ?? "A következő játékos"} következik…`}
       </div>
 
       {canPlay && pub.mustOpen && (
@@ -445,7 +454,7 @@ function Game({ code, session }: { code: string; session: Session }) {
       {/* My hand */}
       <section className={cn("felt-panel px-2 pb-2 pt-5", myTurn && "animate-turn")}>
         <div className="mb-1 flex items-center justify-between px-1 text-xs text-muted-foreground">
-          <span className="font-bold text-foreground">{me?.name} (te) · {me?.score ?? 0} pont</span>
+          <span className="font-bold text-foreground">{me?.name} (te) · {me?.score ?? 0} büntetőpont</span>
           <span>{hand.length} lap {selected.length > 0 && `· ${selected.length} kijelölve`}</span>
         </div>
         <div className="flex flex-wrap justify-center gap-1 pt-2">
@@ -470,7 +479,7 @@ function Game({ code, session }: { code: string; session: Session }) {
   );
 }
 
-function StatusBar({ code, rt, oppOnline, oppName, round }: { code: string; rt: string; oppOnline: boolean; oppName?: string | undefined; round: number }) {
+function StatusBar({ code, rt, onlineCount, oppCount, round }: { code: string; rt: string; onlineCount: number; oppCount: number; round: number }) {
   return (
     <header className="flex items-center justify-between gap-2 px-1 text-xs">
       <Link to="/" className="text-gold font-display text-base font-bold">Römi</Link>
@@ -481,10 +490,10 @@ function StatusBar({ code, rt, oppOnline, oppName, round }: { code: string; rt: 
           {rt === "offline" ? <WifiOff className="size-3.5" /> : <Wifi className="size-3.5" />}
           {rt === "online" ? "Élő" : rt === "offline" ? "Nincs kapcsolat" : "Kapcsolódás"}
         </span>
-        {oppName && (
+        {oppCount > 0 && (
           <span className="flex items-center gap-1">
-            <PresenceDot on={oppOnline} />
-            {oppOnline ? "Ellenfél online" : "Ellenfél offline"}
+            <PresenceDot on={onlineCount === oppCount} />
+            {oppCount === 1 ? (onlineCount ? "Ellenfél online" : "Ellenfél offline") : `${onlineCount}/${oppCount} ellenfél online`}
           </span>
         )}
       </div>
@@ -527,33 +536,39 @@ function MeldRow({ melds, label, onTap, active }: { melds: PublicState["melds"];
 function FinishedOverlay({ pub, seat, busy, onRematch }: { pub: PublicState; seat: number; busy: boolean; onRematch: () => void }) {
   const won = pub.winner === seat;
   const winnerName = pub.winner != null ? pub.players[pub.winner]?.name : "";
-  const opp = 1 - seat;
-  const oppHand = pub.revealedHands?.[opp] ?? [];
   const meReady = pub.players[seat]?.rematch;
-  const oppReady = pub.players[opp]?.rematch;
+  const waiting = pub.players.filter((p) => p && !p.rematch).length;
+  const leader = Math.min(...pub.players.flatMap((p) => (p ? [p.score] : [])));
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="felt-panel w-full max-w-sm space-y-5 p-6 text-center animate-deal">
-        <h2 className="text-gold text-3xl font-bold">{won ? "Nyertél!" : `${winnerName} nyert`}</h2>
-        <p className="text-muted-foreground">+{pub.lastRoundPoints} pont a győztesnek</p>
-        <div className="flex justify-around rounded-xl bg-muted/50 p-3">
-          {pub.players.map((p, i) => (
-            <div key={i}>
-              <p className="text-sm text-muted-foreground">{p?.name}{i === seat ? " (te)" : ""}</p>
-              <p className="font-display text-2xl font-bold">{p?.score ?? 0}</p>
-            </div>
-          ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm">
+      <div className="felt-panel w-full max-w-sm space-y-4 p-6 text-center animate-deal">
+        <h2 className="text-gold text-3xl font-bold">{won ? "Kimentél!" : `${winnerName} kiment`}</h2>
+        {pub.lastRoundHand && <p className="text-sm font-semibold text-primary">Kézből ment ki – dupla büntetés!</p>}
+        <div className="divide-y divide-border rounded-xl bg-muted/50">
+          {pub.players.map((p, i) =>
+            p ? (
+              <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                <span className={cn(p.score === leader && "font-bold text-primary")}>{p.name}{i === seat ? " (te)" : ""}</span>
+                <span className="text-muted-foreground">
+                  +{pub.lastRoundPenalties?.[i] ?? 0} → <span className="font-display text-lg font-bold text-foreground">{p.score}</span>
+                </span>
+              </div>
+            ) : null,
+          )}
         </div>
-        {oppHand.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-widest text-muted-foreground">Az ellenfél lapjai</p>
-            <div className="flex flex-wrap justify-center gap-1">
-              {oppHand.map((c) => <PlayingCard key={c.id} card={c} size="xs" />)}
+        <p className="text-xs text-muted-foreground">Büntetőpontok – a kevesebb a jobb.</p>
+        {pub.players.map((p, i) =>
+          p && i !== seat && (pub.revealedHands?.[i]?.length ?? 0) > 0 ? (
+            <div key={i}>
+              <p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">{p.name} lapjai</p>
+              <div className="flex flex-wrap justify-center gap-1">
+                {pub.revealedHands![i]!.map((c) => <PlayingCard key={c.id} card={c} size="xs" />)}
+              </div>
             </div>
-          </div>
+          ) : null,
         )}
         <Button variant="gold" size="xl" className="w-full" onClick={onRematch} disabled={busy || meReady}>
-          {meReady ? (oppReady ? "Indul…" : "Várakozás az ellenfélre…") : oppReady ? "Az ellenfél kér visszavágót – Mehet!" : "Visszavágó"}
+          {meReady ? (waiting ? `Várakozás (${waiting})…` : "Indul…") : "Új játszma"}
         </Button>
         <Link to="/" className="block text-sm text-muted-foreground underline">Kilépés a főoldalra</Link>
       </div>
