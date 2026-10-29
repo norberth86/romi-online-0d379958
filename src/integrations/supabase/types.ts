@@ -14,7 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      rummy_rooms: {
+        Row: {
+          code: string
+          created_at: string
+          public_state: Json
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          public_state?: Json
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          public_state?: Json
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      rummy_secrets: {
+        Row: {
+          code: string
+          secret_state: Json
+        }
+        Insert: {
+          code: string
+          secret_state?: Json
+        }
+        Update: {
+          code?: string
+          secret_state?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rummy_secrets_code_fkey"
+            columns: ["code"]
+            isOneToOne: true
+            referencedRelation: "rummy_rooms"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
