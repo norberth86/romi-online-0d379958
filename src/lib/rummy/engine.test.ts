@@ -175,3 +175,70 @@ describe("going out and scoring", () => {
     expect(s.starter).toBe(1);
   });
 });
+
+describe("2–4 players", () => {
+  const p = (name: string) => ({ name, token: name, hand: [] as Card[], opened: false, score: 0, ready: false, rematch: false });
+  function game3() {
+    const s = newGame("ABCDE", 3);
+    s.players = [p("A"), p("B"), p("C")];
+    for (const i of [0, 1, 2]) applyAction(s, i, { type: "ready" });
+    return s;
+  }
+  it("room size is clamped to 2–4", () => {
+    expect(newGame("X", 3).players).toHaveLength(3);
+    expect(newGame("X", 9).players).toHaveLength(4);
+    expect(newGame("X", 1).players).toHaveLength(2);
+  });
+  it("deals 15/14/14 with two decks", () => {
+    const s = game3();
+    expect(s.players.map((x) => x!.hand.length)).toEqual([15, 14, 14]);
+    expect(total(s)).toBe(108);
+  });
+  it("deals 15/14/14/14 for four", () => {
+    const s = newGame("ABCDE", 4);
+    s.players = [p("A"), p("B"), p("C"), p("D")];
+    for (const i of [0, 1, 2, 3]) applyAction(s, i, { type: "ready" });
+    expect(s.players.map((x) => x!.hand.length)).toEqual([15, 14, 14, 14]);
+  });
+  it("turn passes 0 → 1 → 2 → 0", () => {
+    const s = game3();
+    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id });
+    expect(s.turn).toBe(1);
+    applyAction(s, 1, { type: "drawStock" });
+    applyAction(s, 1, { type: "discard", cardId: s.players[1]!.hand[0]!.id });
+    expect(s.turn).toBe(2);
+    applyAction(s, 2, { type: "takeDiscard" }); // own first turn: free
+    expect(s.mustOpenWith).toBeNull();
+    applyAction(s, 2, { type: "discard", cardId: s.players[2]!.hand.find((x) => x.id !== s.takenFromDiscard)!.id });
+    expect(s.turn).toBe(0);
+  });
+  it("starts with 2 of 3 seats once both present are ready; empty seat skipped", () => {
+    const s = newGame("ABCDE", 3);
+    s.players = [p("A"), null, p("C")];
+    applyAction(s, 0, { type: "ready" });
+    applyAction(s, 2, { type: "ready" });
+    expect(s.status).toBe("playing");
+    applyAction(s, 0, { type: "discard", cardId: s.players[0]!.hand[0]!.id });
+    expect(s.turn).toBe(2);
+  });
+  it("Handrömi penalties: each loser gets hand value, ×2 if unopened", () => {
+    const s = game3();
+    s.players[0]!.hand = cs("S5"); s.players[0]!.opened = true;
+    s.players[1]!.hand = cs("H1", "D7"); s.players[1]!.opened = true;
+    s.players[2]!.hand = cs("X1");
+    applyAction(s, 0, { type: "discard", cardId: "S5" });
+    expect(s.lastRoundPenalties).toEqual([0, 17, 40]);
+    expect(s.players.map((x) => x!.score)).toEqual([0, 17, 40]);
+    expect(s.starter).toBe(1);
+  });
+  it("going out kézből doubles all penalties", () => {
+    const s = game3();
+    s.players[0]!.hand = cs("H11", "H12", "H13", "S10", "D10", "C10", "S2");
+    s.players[1]!.hand = cs("D7"); s.players[1]!.opened = true;
+    s.players[2]!.hand = cs("D7");
+    applyAction(s, 0, { type: "open", groups: [["H11", "H12", "H13"], ["S10", "D10", "C10"]] });
+    applyAction(s, 0, { type: "discard", cardId: "S2" });
+    expect(s.lastRoundHand).toBe(true);
+    expect(s.lastRoundPenalties).toEqual([0, 14, 28]);
+  });
+});

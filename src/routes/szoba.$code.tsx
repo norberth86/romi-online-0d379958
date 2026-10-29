@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/szoba/$code")({
   head: ({ params }) => ({
     meta: [
-      { title: `Szoba ${params.code} – Kétfős Römi Online` },
+      { title: `Szoba ${params.code} – Römi Online` },
       { name: "description", content: `Csatlakozz a(z) ${params.code} römiszobához és játssz valós időben.` },
       { property: "og:title", content: `Römi meghívó – ${params.code}` },
       { property: "og:description", content: "Gyere, játsszunk egy kétfős römit!" },
@@ -253,7 +253,7 @@ function Game({ code, session }: { code: string; session: Session }) {
   const share = async () => {
     const url = `${window.location.origin}/szoba/${code}`;
     try {
-      if (navigator.share) await navigator.share({ title: "Kétfős Römi", text: `Gyere römizni! Kód: ${code}`, url });
+      if (navigator.share) await navigator.share({ title: "Römi Online", text: `Gyere römizni! Kód: ${code}`, url });
       else {
         await navigator.clipboard.writeText(url);
         toast.success("Link másolva!");
@@ -324,7 +324,7 @@ function Game({ code, session }: { code: string; session: Session }) {
       {status}
 
       {/* Opponents */}
-      <div className={cn("grid gap-2", opps.length > 1 ? "grid-cols-" + opps.length : "grid-cols-1")}>
+      <div className={cn("grid gap-2", opps.length === 3 ? "grid-cols-3" : opps.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
         {opps.map(({ p, i }) => (
           <section key={i} className={cn("felt-panel flex items-center justify-between gap-2 px-3 py-2", pub.turn === i && pub.status === "playing" && "animate-turn")}>
             <div className="flex min-w-0 items-center gap-2">
