@@ -7,6 +7,8 @@ export type Meld = { id: string; owner: number; kind: MeldKind; cards: Card[] };
 export const OPEN_MIN = 51;
 export const STARTER_HAND = 15;
 export const SECOND_HAND = 14;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 4;
 const SUITS: Suit[] = ["S", "H", "D", "C"];
 
 export function makeDeck(): Card[] {
@@ -119,13 +121,16 @@ export type Player = {
   rematch: boolean;
   /** Per-player: has this player finished their own first turn in the current round? */
   firstTurnDone?: boolean;
+  /** Opened during the current turn (used to detect going out "kézből"). */
+  openedThisTurn?: boolean;
 };
 
 export type GameState = {
   v: number;
   code: string;
   status: "lobby" | "playing" | "finished";
-  players: [Player | null, Player | null];
+  /** 2–4 seats; null = empty seat. Length is the room capacity. */
+  players: (Player | null)[];
   stock: Card[];
   discard: Card[];
   melds: Meld[];
@@ -135,6 +140,10 @@ export type GameState = {
   round: number;
   winner: number | null;
   lastRoundPoints: number;
+  /** Penalty points each seat received in the last round (null = empty seat). */
+  lastRoundPenalties?: (number | null)[];
+  /** Winner went out in one go ("kézből"), doubling penalties. */
+  lastRoundHand?: boolean;
   takenFromDiscard: string | null;
   /** Card taken from discard that must be part of the 51-point opening this turn. */
   mustOpenWith?: string | null;
@@ -157,9 +166,10 @@ export type Action =
 
 export class RuleError extends Error {}
 
-export function newGame(code: string): GameState {
+export function newGame(code: string, size = 2): GameState {
+  const n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, Math.floor(size)));
   return {
-    v: 0, code, status: "lobby", players: [null, null], stock: [], discard: [], melds: [],
+    v: 0, code, status: "lobby", players: Array.from({ length: n }, () => null), stock: [], discard: [], melds: [],
     turn: 0, phase: "draw", starter: 0, round: 0, winner: null, lastRoundPoints: 0,
     takenFromDiscard: null, meldCounter: 0, log: [],
   };
@@ -169,10 +179,28 @@ function log(s: GameState, msg: string) {
   s.log = [...s.log, msg].slice(-8);
 }
 
+/** Occupied seats in turn order. */
+export function seats(s: GameState): number[] {
+  return s.players.flatMap((p, i) => (p ? [i] : []));
+}
+
+/** Next occupied seat after `seat` (clockwise). */
+export function nextSeat(s: GameState, seat: number): number {
+  const n = s.players.length;
+  for (let k = 1; k <= n; k++) {
+    const i = (seat + k) % n;
+    if (s.players[i]) return i;
+  }
+  return seat;
+}
+
 export function deal(s: GameState, rand?: () => number) {
+  if (seats(s).length < MIN_PLAYERS) throw new RuleError("Legalább két játékos kell.");
+  if (!s.players[s.starter]) s.starter = nextSeat(s, s.starter);
   const deck = shuffle(makeDeck(), rand);
   s.players.forEach((p, i) => {
-    if (!p) throw new RuleError("Hiányzik a második játékos.");
+    if (!p) return;
+    p.openedThisTurn = false;
     p.hand = deck.splice(0, i === s.starter ? STARTER_HAND : SECOND_HAND);
     p.opened = false;
     p.ready = false;
@@ -208,15 +236,32 @@ function removeFromHand(p: Player, ids: string[]) {
   p.hand = p.hand.filter((c) => !ids.includes(c.id));
 }
 
+/**
+ * Handrömi scoring: every other player gets the value of the cards left in hand as
+ * penalty points (doubled if they never opened). If the winner went out "kézből"
+ * (opened and went out in the same turn), all penalties are doubled again.
+ * Scores are cumulative penalties – lower is better.
+ */
+export function roundPenalties(s: GameState, winner: number): (number | null)[] {
+  const hand = !!s.players[winner]?.openedThisTurn;
+  return s.players.map((p, i) => {
+    if (!p) return null;
+    if (i === winner) return 0;
+    const base = p.hand.reduce((a, c) => a + handValue(c), 0);
+    return base * (p.opened ? 1 : 2) * (hand ? 2 : 1);
+  });
+}
+
 function finishRound(s: GameState, winner: number) {
-  const loser = s.players[1 - winner]!;
-  const pts = loser.hand.reduce((a, c) => a + handValue(c), 0) * (loser.opened ? 1 : 2);
-  s.players[winner]!.score += pts;
-  s.lastRoundPoints = pts;
+  const pen = roundPenalties(s, winner);
+  pen.forEach((v, i) => { if (v != null) s.players[i]!.score += v; });
+  s.lastRoundPenalties = pen;
+  s.lastRoundHand = !!s.players[winner]?.openedThisTurn;
+  s.lastRoundPoints = pen.reduce<number>((a, v) => a + (v ?? 0), 0);
   s.winner = winner;
   s.status = "finished";
-  s.starter = 1 - s.starter;
-  log(s, `${s.players[winner]!.name} kiment! +${pts} pont.`);
+  s.starter = nextSeat(s, s.starter);
+  log(s, `${s.players[winner]!.name} kiment${s.lastRoundHand ? " kézből" : ""}!`);
 }
 
 export function applyAction(s: GameState, seat: number, a: Action, rand?: () => number): GameState {
@@ -226,13 +271,14 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
   if (a.type === "ready") {
     if (s.status !== "lobby") throw new RuleError("A játék már elindult.");
     me.ready = !me.ready;
-    if (s.players[0]?.ready && s.players[1]?.ready) deal(s, rand);
+    const sat = seats(s);
+    if (sat.length >= MIN_PLAYERS && sat.every((i) => s.players[i]!.ready)) deal(s, rand);
     return s;
   }
   if (a.type === "rematch") {
     if (s.status !== "finished") throw new RuleError("A játszma még tart.");
     me.rematch = true;
-    if (s.players[0]?.rematch && s.players[1]?.rematch) deal(s, rand);
+    if (seats(s).every((i) => s.players[i]!.rematch)) deal(s, rand);
     return s;
   }
 
@@ -289,6 +335,7 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       removeFromHand(me, all);
       s.melds.push(...melds);
       me.opened = true;
+      me.openedThisTurn = true;
       s.mustOpenWith = null;
       log(s, `${me.name} lepakolt ${total} ponttal.`);
       if (me.hand.length === 0) finishRound(s, seat);
@@ -332,7 +379,8 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (me.hand.length === 0) {
         finishRound(s, seat);
       } else {
-        s.turn = 1 - seat;
+        me.openedThisTurn = false;
+        s.turn = nextSeat(s, seat);
         s.phase = "draw";
       }
       return s;
@@ -367,6 +415,8 @@ export type PublicState = {
   round: number;
   winner: number | null;
   lastRoundPoints: number;
+  lastRoundPenalties: (number | null)[] | null;
+  lastRoundHand: boolean;
   revealedHands: Card[][] | null;
   /** Whether the player to move may freely take the discard (own first turn or already opened). */
   discardFree: boolean;
@@ -399,6 +449,8 @@ export function toPublic(s: GameState): PublicState {
     mustOpen: !!s.mustOpenWith,
     firstTurn: !!s.players[s.turn] && !s.players[s.turn]!.firstTurnDone,
     discardRefused: !!s.discardRefused,
+    lastRoundPenalties: s.lastRoundPenalties ?? null,
+    lastRoundHand: !!s.lastRoundHand,
     revealedHands: s.status === "finished" ? s.players.map((p) => p?.hand ?? []) : null,
     log: s.log,
     v: s.v,

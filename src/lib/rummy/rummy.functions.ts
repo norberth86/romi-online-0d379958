@@ -74,14 +74,14 @@ const nameSchema = z.string().trim().min(1).max(20);
 const codeSchema = z.string().trim().toUpperCase().length(5);
 
 export const createRoom = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ name: nameSchema }).parse(d))
+  .inputValidator((d: unknown) => z.object({ name: nameSchema, size: z.number().int().min(2).max(4).default(2) }).parse(d))
   .handler(({ data }) =>
     wrap(async () => {
       const db = await admin();
       for (let i = 0; i < 6; i++) {
         const code = randomCode();
         const token = randomToken();
-        const s = newGame(code);
+        const s = newGame(code, data.size);
         s.players[0] = { name: data.name, token, hand: [], opened: false, score: 0, ready: false, rematch: false };
         s.v = 1;
         const { error } = await db
@@ -103,6 +103,7 @@ export const joinRoom = createServerFn({ method: "POST" })
       const token = randomToken();
       let seat = -1;
       await mutate(data.code, (s) => {
+        if (s.status !== "lobby") throw new RuleError("A játék már elindult ebben a szobában.");
         seat = s.players.findIndex((p) => p === null);
         if (seat < 0) throw new RuleError("A szoba megtelt.");
         s.players[seat] = { name: data.name, token, hand: [], opened: false, score: 0, ready: false, rematch: false };
