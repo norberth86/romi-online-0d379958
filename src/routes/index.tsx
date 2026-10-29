@@ -104,10 +104,11 @@ function Home() {
       <details className="felt-panel p-4 text-sm text-muted-foreground">
         <summary className="cursor-pointer font-semibold text-foreground">Szabályok röviden</summary>
         <ul className="mt-3 list-disc space-y-1.5 pl-5">
-          <li>2 pakli francia kártya + 4 joker, mindenki 13 lapot kap.</li>
+          <li>2 pakli francia kártya + 4 joker. A kezdő 15, a másik játékos 14 lapot kap; a kezdő első lépése a dobás.</li>
           <li>A körödben húzz egyet a pakliból vagy vedd fel a legfelső dobott lapot.</li>
+          <li>A saját első körödben a dobott lapot szabadon felveheted. Később, amíg nem pakoltál le, csak akkor, ha vele együtt azonnal legalább 51 ponttal lepakolsz.</li>
           <li>Sor: 3–4 azonos értékű, különböző színű lap. Sorozat: legalább 3 egymást követő, azonos színű lap.</li>
-          <li>Az első lepakolás legalább 51 pont legyen (ász 11 vagy A-2-3-ban 1, figurák 10).</li>
+          <li>Az első lepakolás legalább 51 pont legyen (ász 10, de A-2-3-ban 1; figurák 10; joker a helyettesített lap értéke).</li>
           <li>Lepakolás után új kombinációt rakhatsz, vagy bármelyik asztali kombinációhoz hozzárakhatsz.</li>
           <li>A kör végén dobj el egy lapot. Aki elsőként kifogy a lapokból, nyer.</li>
           <li>A győztes megkapja az ellenfél kezében maradt lapok pontját (dupla, ha az ellenfél nem pakolt le).</li>
