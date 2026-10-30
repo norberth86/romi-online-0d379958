@@ -327,8 +327,8 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
     trial.handi = null;
     trial.turn = seat;
     trial.phase = "play";
-    trial.mustOpenWith = s.turn === seat ? s.mustOpenWith : null;
-    trial.takenFromDiscard = s.turn === seat ? s.takenFromDiscard : null;
+    trial.mustOpenWith = s.turn === seat ? (s.mustOpenWith ?? null) : null;
+    trial.takenFromDiscard = s.turn === seat ? (s.takenFromDiscard ?? null) : null;
     applyAction(trial, seat, { type: "open", groups: a.groups });
     if (player.hand.length !== 1 || player.hand[0]?.id !== a.discardId) throw new RuleError("A handi lappal az összes lapot le kell pakolnod, egyetlen záródobás kivételével.");
     applyAction(trial, seat, { type: "discard", cardId: a.discardId });

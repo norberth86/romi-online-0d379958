@@ -42,7 +42,7 @@ describe("game flow", () => {
     expect(s.players[0]!.hand).toHaveLength(15);
     expect(s.players[1]!.hand).toHaveLength(14);
     expect(s.discard).toHaveLength(0);
-    expect(s.stock).toHaveLength(108 - 29);
+    expect(s.stock).toHaveLength(108 - 29 - 1); // egy lap a handi lap
     expect(s.turn).toBe(0);
     expect(s.phase).toBe("play");
     expect(() => applyAction(s, 0, { type: "drawStock" })).toThrow();
@@ -71,7 +71,7 @@ describe("game flow", () => {
 });
 
 const total = (s: GameState) =>
-  s.stock.length + s.discard.length + s.players.reduce((a, p) => a + p!.hand.length, 0) + s.melds.reduce((a, m) => a + m.cards.length, 0);
+  s.stock.length + s.discard.length + (s.handi ? 1 : 0) + (s.retiredCards?.length ?? 0) + s.players.reduce((a, p) => a + p!.hand.length, 0) + s.melds.reduce((a, m) => a + m.cards.length, 0);
 
 describe("ace and joker values", () => {
   it("A-2-3: ace 1", () => { const r = analyzeMeld(cs("S1", "S2", "S3")); expect(r.ok && r.points).toBe(6); });
