@@ -6,8 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CardBack, PlayingCard } from "@/components/rummy/PlayingCard";
-import { analyzeMeld, OPEN_MIN, type Action, type Card, type PublicState } from "@/lib/rummy/engine";
-import { getMyHand, joinRoom, playAction } from "@/lib/rummy/rummy.functions";
+import { OPEN_MIN, type Action, type Analysis, type Card, type PublicState } from "@/lib/rummy/engine";
+import { checkPreparation, getMyHand, joinRoom, playAction } from "@/lib/rummy/rummy.functions";
+import { retainPreparation } from "@/lib/rummy/preparation";
 import { getSavedName, getSession, saveName, setSession, type Session } from "@/lib/rummy/session";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,12 @@ function Game({ code, session }: { code: string; session: Session }) {
   const [takenFromDiscard, setTaken] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [staged, setStaged] = useState<string[][]>([]);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [handiSelected, setHandiSelected] = useState(false);
+  const [requiredJokers, setRequiredJokers] = useState<string[]>([]);
+  const preparationKey = pub ? `rummy:prep:${code}:${seat}:${pub.round}` : null;
+  const restoredKey = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rtStatus, setRtStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [online, setOnline] = useState<Set<number>>(new Set());
@@ -105,12 +112,46 @@ function Game({ code, session }: { code: string; session: Session }) {
     });
     const ids = new Set(h.map((c) => c.id));
     setSelected((s) => s.filter((id) => ids.has(id)));
-    setStaged((g) => (g.every((grp) => grp.every((id) => ids.has(id))) ? g : []));
   }, []);
+
+  useEffect(() => {
+    if (!preparationKey || !pub || handV.current < pub.v) return;
+    const available = [...hand.map((c) => c.id), ...(pub.handi ? [pub.handi.id] : [])];
+    if (restoredKey.current !== preparationKey) {
+      let saved: string[][] = [];
+      try {
+        const raw: unknown = JSON.parse(localStorage.getItem(preparationKey) ?? "[]");
+        if (Array.isArray(raw) && raw.every((g) => Array.isArray(g) && g.every((id) => typeof id === "string"))) saved = raw;
+      } catch { /* unavailable storage */ }
+      restoredKey.current = preparationKey;
+      setStaged(retainPreparation(saved, available));
+      setEditing(null);
+      setHandiSelected(false);
+    } else setStaged((g) => retainPreparation(g, available));
+  }, [preparationKey, hand, pub]);
+
+  useEffect(() => {
+    if (preparationKey && restoredKey.current === preparationKey) {
+      try { localStorage.setItem(preparationKey, JSON.stringify(staged)); } catch { /* unavailable storage */ }
+    }
+  }, [staged, preparationKey]);
+
+  useEffect(() => {
+    setAnalyses([]);
+    let active = true;
+    const groups = [...staged, selected];
+    if (!groups.some((g) => g.length)) return;
+    const timer = setTimeout(() => {
+      checkPreparation({ data: { code, token: session.token, groups } }).then((r) => {
+        if (active && r.ok) setAnalyses(r.data);
+      }).catch(() => {});
+    }, 180);
+    return () => { active = false; clearTimeout(timer); };
+  }, [code, session.token, staged, selected, hand]);
 
   const refreshHand = useCallback(async () => {
     const r = await getMyHand({ data: { code, token: session.token } }).catch(() => null);
-    if (r?.ok) applyHand(r.data.hand, r.data.v, r.data.takenFromDiscard);
+    if (r?.ok) { applyHand(r.data.hand, r.data.v, r.data.takenFromDiscard); setRequiredJokers(r.data.requiredJokers); }
     else if (r && !r.ok) toast.error(r.error);
   }, [code, session.token, applyHand]);
 
@@ -179,11 +220,12 @@ function Game({ code, session }: { code: string; session: Session }) {
       return false;
     }
     applyHand(r.data.hand, r.data.v, r.data.takenFromDiscard);
+    setRequiredJokers(r.data.requiredJokers);
     fetchPub();
     return true;
   };
 
-  const byId = useMemo(() => new Map(hand.map((c) => [c.id, c])), [hand]);
+  const byId = useMemo(() => new Map([...hand, ...(pub?.handi ? [pub.handi] : [])].map((c) => [c.id, c])), [hand, pub?.handi]);
   const stagedIds = useMemo(() => new Set(staged.flat()), [staged]);
   const visibleHand = order.map((id) => byId.get(id)).filter((c): c is Card => !!c && !stagedIds.has(c.id));
 
@@ -203,12 +245,12 @@ function Game({ code, session }: { code: string; session: Session }) {
   const turnName = pub.players[pub.turn]?.name;
   const myTurn = pub.status === "playing" && pub.turn === seat;
   const canPlay = myTurn && pub.phase === "play";
-  const selCards = selected.map((id) => byId.get(id)!).filter(Boolean);
-  const selAnalysis = selCards.length >= 3 ? analyzeMeld(selCards) : null;
-  const stagedPoints = staged.reduce((a, g) => {
-    const r = analyzeMeld(g.map((id) => byId.get(id)!));
-    return a + (r.ok ? r.points : 0);
-  }, 0);
+  const selCards = selected.map((id) => byId.get(id)).filter((c): c is Card => !!c);
+  const selAnalysis = analyses[staged.length];
+  const stagedPoints = analyses.slice(0, staged.length).reduce((a, r) => a + (r.ok ? r.points : 0), 0);
+  const stagedValid = staged.length > 0 && analyses.length === staged.length + 1 && analyses.slice(0, staged.length).every((r) => r.ok);
+  const handiPrepared = !!pub.handi && stagedIds.has(pub.handi.id);
+  const closingCard = hand.filter((c) => !stagedIds.has(c.id));
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -223,16 +265,16 @@ function Game({ code, session }: { code: string; session: Session }) {
 
   const onMeldButton = async () => {
     if (!selAnalysis?.ok) return void toast.error(selAnalysis && !selAnalysis.ok ? selAnalysis.reason : "Válassz ki legalább 3 lapot.");
-    if (!me?.opened) {
-      setStaged((g) => [...g, selected]);
-      setSelected([]);
-      return;
-    }
-    if (await act({ type: "meld", cardIds: selected })) setSelected([]);
+    setStaged((g) => editing === null ? [...g, selected] : g.map((group, i) => i === editing ? selected : group));
+    setEditing(null);
+    setSelected([]);
   };
 
   const onOpen = async () => {
-    if (await act({ type: "open", groups: staged })) {
+    const action: Action = handiPrepared && closingCard.length === 1 && closingCard[0]
+      ? { type: "handiOut", groups: staged, discardId: closingCard[0].id }
+      : me?.opened ? { type: "meldGroups", groups: staged } : { type: "open", groups: staged };
+    if (await act(action)) {
       setStaged([]);
       setSelected([]);
     }
@@ -240,8 +282,8 @@ function Game({ code, session }: { code: string; session: Session }) {
 
   const onDiscard = async () => {
     if (selected.length !== 1) return void toast.error("Pontosan egy lapot válassz ki az eldobáshoz.");
-    if (staged.length) setStaged([]);
-    if (await act({ type: "discard", cardId: selected[0]! })) setSelected([]);
+    const cardId = selected[0];
+    if (cardId && await act({ type: "discard", cardId })) setSelected([]);
   };
 
   const onMeldTap = async (meldId: string) => {
@@ -353,38 +395,43 @@ function Game({ code, session }: { code: string; session: Session }) {
           <MeldRow key={i} melds={pub.melds.filter((m) => m.owner === i)} label={`${p.name} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
         ))}
 
-        <div className="flex items-center justify-center gap-6 py-2">
-          <button
+        <div className="flex items-center justify-center gap-5 py-5 sm:gap-8">
+          {pub.handi && <Button variant="ghost" className="relative h-[5.4rem] w-[5.4rem] shrink-0 p-0 hover:bg-transparent sm:h-[6.3rem] sm:w-[6.3rem]" aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
+            if (!pub.handi) return;
+            toggle(pub.handi.id);
+            setHandiSelected((v) => !v);
+          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-4 text-sm font-bold text-primary">Handi</span></Button>}
+          <Button variant="ghost"
             type="button"
             onClick={() => act({ type: "drawStock" })}
             disabled={!(myTurn && pub.phase === "draw") || busy}
-            className={cn("relative rounded-lg", myTurn && pub.phase === "draw" && "animate-turn")}
+            className={cn("relative h-auto rounded-lg p-0 hover:bg-transparent", myTurn && pub.phase === "draw" && "animate-turn")}
             aria-label="Húzás a pakliból"
           >
             <CardBack />
             <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background px-2 text-xs font-bold">{pub.stockCount}</span>
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             type="button"
             onClick={() => act({ type: "takeDiscard" })}
             disabled={!(myTurn && pub.phase === "draw") || !pub.discardTop || pub.discardRefused || busy}
-            className={cn("relative rounded-lg", myTurn && pub.phase === "draw" && pub.discardTop && "animate-turn")}
+            className={cn("relative h-auto rounded-lg p-0 hover:bg-transparent", myTurn && pub.phase === "draw" && pub.discardTop && "animate-turn")}
             aria-label="Dobott lap felvétele"
           >
             {pub.discardTop ? (
               <PlayingCard card={pub.discardTop} />
             ) : (
-              <div className="flex h-[4.9rem] w-[3.4rem] items-center justify-center rounded-lg border-2 border-dashed border-border text-xs text-muted-foreground sm:h-[5.75rem] sm:w-16">üres</div>
+              <div className="flex h-[5.4rem] w-[3.75rem] items-center justify-center rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground sm:h-[6.3rem] sm:w-[4.4rem]">üres</div>
             )}
             <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background px-2 text-xs font-bold">{pub.discardCount}</span>
-          </button>
+          </Button>
         </div>
 
         <MeldRow melds={myMelds} label="A te kombinációid" onTap={onMeldTap} active={canPlay && selected.length > 0} />
       </section>
 
       {/* Turn banner */}
-      <div className={cn("rounded-xl px-3 py-2 text-center text-sm font-semibold", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
+      <div className={cn("rounded-xl px-3 py-3 text-center text-base font-semibold", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
         {pub.status === "finished"
           ? "A játszma véget ért"
           : myTurn
@@ -398,6 +445,8 @@ function Game({ code, session }: { code: string; session: Session }) {
                 ? "Te kezdesz! Válassz ki és dobj el egy lapot (lepakolhatsz is, ha megvan az 51 pont)."
                 : pub.mustOpen
                 ? `Pakolj le legalább ${OPEN_MIN} ponttal a felvett (keretezett) lappal együtt, vagy tedd vissza.`
+              : requiredJokers.length > 0
+                ? "A kiváltott jokert még ebben a körben rakd le vagy szúrd be, majd dobj egy lapot."
               : me?.opened
                 ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
                 : `Lepakoláshoz gyűjts legalább ${OPEN_MIN} pontot, majd dobj el egy lapot.`
@@ -414,28 +463,40 @@ function Game({ code, session }: { code: string; session: Session }) {
       {staged.length > 0 && (
         <section className="felt-panel space-y-2 p-2">
           <div className="flex items-center justify-between px-1 text-sm">
-            <span className="font-semibold">Lepakolás előkészítése: <span className={stagedPoints >= OPEN_MIN ? "text-success" : "text-primary"}>{stagedPoints}</span> / {OPEN_MIN} pont</span>
-            <button type="button" onClick={() => setStaged([])} className="text-muted-foreground" aria-label="Előkészítés törlése"><X className="size-5" /></button>
+            <span className="font-semibold text-base">Előkészítés: {stagedPoints} pont{!me?.opened && ` / ${OPEN_MIN}`}</span>
+            <Button variant="ghost" size="icon" onClick={() => { setStaged([]); setEditing(null); }} aria-label="Előkészítés törlése"><X /></Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {staged.map((g, i) => (
-              <div key={i} className="flex -space-x-5">
-                {g.map((id) => byId.get(id) && <PlayingCard key={id} card={byId.get(id)!} size="sm" />)}
+              <div key={i} className={cn("flex flex-col gap-2 rounded-md border border-border p-2", editing === i && "ring-2 ring-primary")}>
+                <div className="flex flex-wrap gap-1">{g.map((id) => {
+                  const card = byId.get(id);
+                  return card ? <PlayingCard key={id} card={card} size="sm" onClick={() => {
+                    setStaged((groups) => groups.map((group, j) => j === i ? group.filter((x) => x !== id) : group));
+                    setSelected((ids) => ids.filter((x) => x !== id));
+                    if (id === pub.handi?.id) setHandiSelected(false);
+                  }} /> : null;
+                })}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">{analyses[i]?.ok ? `${analyses[i].points} pont` : "Hiányos kombináció"}</span>
+                  <Button variant="felt" size="sm" onClick={() => { setEditing(i); setSelected(g); }}>Módosít</Button>
+                  <Button variant="ghost" size="icon" aria-label={`${i + 1}. előkészítés törlése`} onClick={() => { setStaged((groups) => groups.filter((_, j) => j !== i)); setEditing(null); setSelected([]); }}><X /></Button>
+                </div>
               </div>
             ))}
           </div>
-          <Button variant="gold" className="w-full" disabled={stagedPoints < OPEN_MIN || busy || !canPlay} onClick={onOpen}>
-            <Check /> Lepakolás ({stagedPoints} pont)
+          <Button variant="gold" className="w-full" disabled={!stagedValid || (!me?.opened && stagedPoints < OPEN_MIN) || busy || (handiPrepared ? me?.opened || closingCard.length !== 1 : !canPlay)} onClick={onOpen}>
+            <Check /> {handiPrepared ? "Handi – záródobással" : me?.opened ? "Lerakás" : "Lepakolás"} ({stagedPoints} pont)
           </Button>
         </section>
       )}
 
       {/* Actions */}
-      <div className="grid grid-cols-4 gap-1.5">
-        <Button variant="felt" size="xl" className="px-2 text-sm" onClick={onMeldButton} disabled={!canPlay || busy || selected.length < 3}>
-          <Layers /> {me?.opened ? "Lerak" : "Előkészít"}
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        <Button variant="felt" size="xl" className="px-2 text-base" onClick={onMeldButton} disabled={pub.status !== "playing" || busy || selected.length < 3}>
+          <Layers /> {editing !== null ? "Mentés" : "Előkészít"}
         </Button>
-        <Button variant="gold" size="xl" className="px-2 text-sm" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen}>
+        <Button variant="gold" size="xl" className="px-2 text-base" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen || requiredJokers.length > 0 || selected[0] === pub.handi?.id}>
           <Trash2 /> Eldob
         </Button>
         <Button variant="felt" size="xl" className="px-2 text-sm" onClick={() => sortHand("suit")}>
@@ -446,14 +507,14 @@ function Game({ code, session }: { code: string; session: Session }) {
         </Button>
       </div>
       {selCards.length >= 3 && (
-        <p className={cn("text-center text-xs", selAnalysis?.ok ? "text-success" : "text-destructive")}>
-          {selAnalysis?.ok ? `Érvényes ${selAnalysis.kind === "set" ? "sor" : "sorozat"} · ${selAnalysis.points} pont` : selAnalysis?.reason}
+        <p className={cn("text-center text-base", selAnalysis?.ok ? "text-success" : "text-destructive")}>
+          {selAnalysis?.ok ? `Érvényes ${selAnalysis.kind === "set" ? "sor" : "sorozat"} · ${selAnalysis.points} pont` : selAnalysis?.reason ?? "Ellenőrzés…"}
         </p>
       )}
 
       {/* My hand */}
       <section className={cn("felt-panel px-2 pb-2 pt-5", myTurn && "animate-turn")}>
-        <div className="mb-1 flex items-center justify-between px-1 text-xs text-muted-foreground">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-1 px-1 text-sm text-muted-foreground">
           <span className="font-bold text-foreground">{me?.name} (te) · {me?.score ?? 0} büntetőpont</span>
           <span>{hand.length} lap {selected.length > 0 && `· ${selected.length} kijelölve`}</span>
         </div>
@@ -464,13 +525,13 @@ function Game({ code, session }: { code: string; session: Session }) {
               card={c}
               selected={selected.includes(c.id)}
               onClick={() => toggle(c.id)}
-              className={cn("animate-deal", c.id === takenFromDiscard && "outline-[3px] outline-solid outline-offset-2 outline-primary")}
+              className={cn("animate-deal", (c.id === takenFromDiscard || requiredJokers.includes(c.id)) && "outline-[3px] outline-solid outline-offset-2 outline-primary")}
             />
           ))}
         </div>
       </section>
 
-      {pub.log.length > 0 && <p className="truncate px-1 text-center text-xs text-muted-foreground">{pub.log[pub.log.length - 1]}</p>}
+      {pub.log.length > 0 && <p className="px-1 text-center text-sm text-muted-foreground">{pub.log[pub.log.length - 1]}</p>}
 
       {pub.status === "finished" && (
         <FinishedOverlay pub={pub} seat={seat} busy={busy} onRematch={() => act({ type: "rematch" })} />
@@ -562,7 +623,7 @@ function FinishedOverlay({ pub, seat, busy, onRematch }: { pub: PublicState; sea
             <div key={i}>
               <p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">{p.name} lapjai</p>
               <div className="flex flex-wrap justify-center gap-1">
-                {pub.revealedHands![i]!.map((c) => <PlayingCard key={c.id} card={c} size="xs" />)}
+                {pub.revealedHands?.[i]?.map((c) => <PlayingCard key={c.id} card={c} size="xs" />)}
               </div>
             </div>
           ) : null,
