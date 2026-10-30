@@ -123,6 +123,7 @@ export type Player = {
   firstTurnDone?: boolean;
   /** Opened during the current turn (used to detect going out "kézből"). */
   openedThisTurn?: boolean;
+  requiredJokers?: string[];
 };
 
 export type GameState = {
@@ -134,6 +135,8 @@ export type GameState = {
   stock: Card[];
   discard: Card[];
   melds: Meld[];
+  handi?: Card | null;
+  retiredCards?: Card[];
   turn: number;
   phase: "draw" | "play";
   starter: number;
@@ -159,6 +162,8 @@ export type Action =
   | { type: "takeDiscard" }
   | { type: "open"; groups: string[][] }
   | { type: "meld"; cardIds: string[] }
+  | { type: "meldGroups"; groups: string[][] }
+  | { type: "handiOut"; groups: string[][]; discardId: string }
   | { type: "layoff"; meldId: string; cardIds: string[] }
   | { type: "discard"; cardId: string }
   | { type: "returnDiscard" }
@@ -206,9 +211,12 @@ export function deal(s: GameState, rand?: () => number) {
     p.ready = false;
     p.rematch = false;
     p.firstTurnDone = false;
+    p.requiredJokers = [];
   });
   s.discard = [];
   s.stock = deck;
+  s.handi = s.stock.pop() ?? null;
+  s.retiredCards = [];
   s.melds = [];
   s.status = "playing";
   s.turn = s.starter;
@@ -234,6 +242,30 @@ function takeFromHand(p: Player, ids: string[]): Card[] {
 
 function removeFromHand(p: Player, ids: string[]) {
   p.hand = p.hand.filter((c) => !ids.includes(c.id));
+  p.requiredJokers = (p.requiredJokers ?? []).filter((id) => !ids.includes(id));
+}
+
+function requireDiscard(p: Player, used: number, returned = 0) {
+  if (p.hand.length - used + returned < 1) throw new RuleError("A záráshoz maradnia kell egy eldobható lapnak. Csak dobással lehet nyerni.");
+}
+
+function retireSets(s: GameState) {
+  s.melds = s.melds.filter((m) => {
+    const complete = m.kind === "set" && m.cards.length === 4 && m.cards.every((c) => c.suit !== "X") && new Set(m.cards.map((c) => c.suit)).size === 4;
+    if (complete) s.retiredCards = [...(s.retiredCards ?? []), ...m.cards];
+    return !complete;
+  });
+}
+
+function replacesJoker(m: Meld, index: number, c: Card) {
+  if (c.suit === "X") return false;
+  const natural = m.cards.find((x) => x.suit !== "X");
+  if (!natural) return false;
+  if (m.kind === "set") return c.rank === natural.rank && !m.cards.some((x) => x.suit === c.suit);
+  const naturalIndex = m.cards.indexOf(natural);
+  const highAce = m.cards.at(-1)?.rank === 1;
+  const position = (natural.rank === 1 && highAce ? 14 : natural.rank) + index - naturalIndex;
+  return c.suit === natural.suit && c.rank === (position === 14 ? 1 : position);
 }
 
 /**
@@ -283,6 +315,26 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
   }
 
   if (s.status !== "playing") throw new RuleError("Nincs folyamatban játszma.");
+  if (a.type === "handiOut") {
+    if (me.opened) throw new RuleError("A handi lap csak kézből záráshoz használható, lepakolás előtt.");
+    if (!s.handi) throw new RuleError("Nincs handi lap.");
+    const trial = structuredClone(s);
+    const player = trial.players[seat];
+    if (!player || !trial.handi) throw new RuleError("Nincs handi lap.");
+    const handiId = trial.handi.id;
+    if (!a.groups.flat().includes(handiId)) throw new RuleError("A handi lapot fel kell használnod a lepakolásban.");
+    player.hand.push(trial.handi);
+    trial.handi = null;
+    trial.turn = seat;
+    trial.phase = "play";
+    trial.mustOpenWith = s.turn === seat ? s.mustOpenWith : null;
+    trial.takenFromDiscard = s.turn === seat ? s.takenFromDiscard : null;
+    applyAction(trial, seat, { type: "open", groups: a.groups });
+    if (player.hand.length !== 1 || player.hand[0]?.id !== a.discardId) throw new RuleError("A handi lappal az összes lapot le kell pakolnod, egyetlen záródobás kivételével.");
+    applyAction(trial, seat, { type: "discard", cardId: a.discardId });
+    Object.assign(s, trial);
+    return s;
+  }
   if (s.turn !== seat) throw new RuleError("Nem te következel.");
 
   switch (a.type) {
@@ -321,6 +373,7 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (!a.groups.length) throw new RuleError("Nincs kiválasztott kombináció.");
       const all = a.groups.flat();
       takeFromHand(me, all);
+      requireDiscard(me, all.length);
       if (s.mustOpenWith && !all.includes(s.mustOpenWith))
         throw new RuleError("A felvett dobott lapot fel kell használnod a lepakolásban.");
       let total = 0;
@@ -334,11 +387,17 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (total < OPEN_MIN) throw new RuleError(`Az első lerakásnak legalább ${OPEN_MIN} pont kell (most ${total}).`);
       removeFromHand(me, all);
       s.melds.push(...melds);
+      retireSets(s);
       me.opened = true;
       me.openedThisTurn = true;
       s.mustOpenWith = null;
       log(s, `${me.name} lepakolt ${total} ponttal.`);
-      if (me.hand.length === 0) finishRound(s, seat);
+      return s;
+    }
+    case "meldGroups": {
+      const trial = structuredClone(s);
+      for (const ids of a.groups) applyAction(trial, seat, { type: "meld", cardIds: ids });
+      Object.assign(s, trial);
       return s;
     }
     case "meld": {
@@ -346,10 +405,11 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (!me.opened) throw new RuleError(`Először legalább ${OPEN_MIN} ponttal kell lepakolnod.`);
       const res = analyzeMeld(takeFromHand(me, a.cardIds));
       if (!res.ok) throw new RuleError(res.reason);
+      requireDiscard(me, a.cardIds.length);
       removeFromHand(me, a.cardIds);
       s.melds.push({ id: `m${++s.meldCounter}`, owner: seat, kind: res.kind, cards: res.ordered });
+      retireSets(s);
       log(s, `${me.name} új kombinációt rakott le.`);
-      if (me.hand.length === 0) finishRound(s, seat);
       return s;
     }
     case "layoff": {
@@ -357,17 +417,34 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
       if (!me.opened) throw new RuleError("Hozzárakni csak lepakolás után lehet.");
       const meld = s.melds.find((m) => m.id === a.meldId);
       if (!meld) throw new RuleError("Nincs ilyen kombináció.");
-      const res = analyzeMeld([...meld.cards, ...takeFromHand(me, a.cardIds)]);
+      const incoming = takeFromHand(me, a.cardIds);
+      const cards = [...meld.cards];
+      const returned: Card[] = [];
+      const additions: Card[] = [];
+      for (const c of incoming) {
+        const index = cards.findIndex((x, i) => x.suit === "X" && replacesJoker({ ...meld, cards }, i, c));
+        if (index < 0) additions.push(c);
+        else {
+          const joker = cards[index];
+          if (joker) returned.push(joker);
+          cards[index] = c;
+        }
+      }
+      const res = analyzeMeld([...cards, ...additions]);
       if (!res.ok || res.kind !== meld.kind) throw new RuleError("Ezek a lapok nem illenek ide.");
+      requireDiscard(me, incoming.length, returned.length);
       removeFromHand(me, a.cardIds);
+      me.hand.push(...returned);
+      me.requiredJokers = [...(me.requiredJokers ?? []), ...returned.map((c) => c.id)];
       meld.cards = res.ordered;
+      retireSets(s);
       log(s, `${me.name} hozzárakott egy kombinációhoz.`);
-      if (me.hand.length === 0) finishRound(s, seat);
       return s;
     }
     case "discard": {
       if (s.phase !== "play") throw new RuleError("Előbb húzz egy lapot.");
       if (s.mustOpenWith) throw new RuleError(`A felvett lappal le kell pakolnod legalább ${OPEN_MIN} ponttal, vagy tedd vissza.`);
+      if (me.requiredJokers?.length) throw new RuleError("A kiváltott jokert még ebben a körben le kell raknod vagy be kell szúrnod, mielőtt dobsz.");
       if (a.cardId === s.takenFromDiscard) throw new RuleError("A most felvett lapot nem dobhatod vissza.");
       const c = takeFromHand(me, [a.cardId])[0]!;
       removeFromHand(me, [c.id]);
@@ -410,6 +487,7 @@ export type PublicState = {
   discardTop: Card | null;
   discardCount: number;
   stockCount: number;
+  handi: Card | null;
   turn: number;
   phase: GameState["phase"];
   round: number;
@@ -440,6 +518,7 @@ export function toPublic(s: GameState): PublicState {
     discardTop: s.discard[s.discard.length - 1] ?? null,
     discardCount: s.discard.length,
     stockCount: s.stock.length,
+    handi: s.handi ?? null,
     turn: s.turn,
     phase: s.phase,
     round: s.round,
