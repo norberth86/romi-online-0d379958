@@ -74,7 +74,7 @@ function Home() {
           <PlayingCard card={{ id: "c", suit: "S", rank: 13 }} className="rotate-12 -translate-x-3" />
         </div>
         <h1 className="text-gold text-4xl font-bold leading-tight">Römi Online</h1>
-        <p className="mt-2 text-muted-foreground">2–4 telefon, egy asztal. Valós idejű römi.</p>
+        <p className="mt-2 text-muted-foreground">2–4 játékos, egy asztal. Valós idejű römi.</p>
       </header>
 
       <section className="felt-panel space-y-5 p-5">
