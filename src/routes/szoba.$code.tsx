@@ -80,6 +80,7 @@ type SortMode = "suit" | "rank";
 const SUIT_ORDER: Record<Card["suit"], number> = { S: 0, H: 1, C: 2, D: 3, X: 4 };
 
 function Game({ code, session }: { code: string; session: Session }) {
+  const seat = session.seat;
   const [pub, setPub] = useState<PublicState | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [hand, setHand] = useState<Card[]>([]);
@@ -98,7 +99,6 @@ function Game({ code, session }: { code: string; session: Session }) {
   const [online, setOnline] = useState<Set<number>>(new Set());
   const handV = useRef(-1);
   const pubV = useRef(-1);
-  const seat = session.seat;
 
   const applyHand = useCallback((h: Card[], v: number, taken: string | null) => {
     if (v < handV.current) return;
