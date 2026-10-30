@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { applyAction, newGame, RuleError, toPublic, type Action, type Card, type GameState } from "./engine";
+import { analyzeMeld, applyAction, newGame, RuleError, toPublic, type Action, type Card, type GameState } from "./engine";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -121,7 +121,7 @@ export const getMyHand = createServerFn({ method: "POST" })
       const s = await load(data.code);
       if (!s) throw new RuleError("Nem létezik ilyen szoba.");
       const seat = seatOf(s, data.token);
-      return { seat, hand: s.players[seat]!.hand as Card[], v: s.v, takenFromDiscard: s.turn === seat ? s.takenFromDiscard : null };
+      return { seat, hand: s.players[seat]?.hand ?? [], requiredJokers: s.players[seat]?.requiredJokers ?? [], v: s.v, takenFromDiscard: s.turn === seat ? s.takenFromDiscard : null };
     }),
   );
 
@@ -132,6 +132,8 @@ const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("takeDiscard") }),
   z.object({ type: z.literal("open"), groups: z.array(z.array(z.string()).min(3).max(13)).min(1).max(6) }),
   z.object({ type: z.literal("meld"), cardIds: z.array(z.string()).min(3).max(13) }),
+  z.object({ type: z.literal("meldGroups"), groups: z.array(z.array(z.string()).min(3).max(13)).min(1).max(6) }),
+  z.object({ type: z.literal("handiOut"), groups: z.array(z.array(z.string()).min(3).max(13)).min(1).max(6), discardId: z.string() }),
   z.object({ type: z.literal("layoff"), meldId: z.string(), cardIds: z.array(z.string()).min(1).max(10) }),
   z.object({ type: z.literal("discard"), cardId: z.string() }),
   z.object({ type: z.literal("returnDiscard") }),
@@ -148,6 +150,21 @@ export const playAction = createServerFn({ method: "POST" })
         seat = seatOf(st, data.token);
         applyAction(st, seat, data.action as Action);
       });
-      return { hand: s.players[seat]!.hand as Card[], v: s.v, takenFromDiscard: s.turn === seat ? s.takenFromDiscard : null };
+      return { hand: s.players[seat]?.hand ?? [], requiredJokers: s.players[seat]?.requiredJokers ?? [], v: s.v, takenFromDiscard: s.turn === seat ? s.takenFromDiscard : null };
     }),
   );
+
+/** Read-only preparation checks; the browser never decides meld validity. */
+export const checkPreparation = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ code: codeSchema, token: z.string().min(10), groups: z.array(z.array(z.string()).max(13)).max(7) }).parse(d))
+  .handler(({ data }) => wrap(async () => {
+    const s = await load(data.code);
+    if (!s) throw new RuleError("Nem létezik ilyen szoba.");
+    const seat = seatOf(s, data.token);
+    const cards = [...(s.players[seat]?.hand ?? []), ...(s.handi ? [s.handi] : [])];
+    return data.groups.map((group) => {
+      const found = group.map((id) => cards.find((c) => c.id === id));
+      if (new Set(group).size !== group.length || found.some((c) => !c)) return { ok: false as const, reason: "Ez a lap nincs a kezedben." };
+      return analyzeMeld(found.filter((c): c is Card => !!c));
+    });
+  }));
