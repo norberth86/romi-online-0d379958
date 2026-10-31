@@ -9,9 +9,16 @@ export const rankLabel = (r: number) => RANK_LABEL[r] ?? String(r);
 
 type Size = "xs" | "sm" | "md";
 const SIZES: Record<Size, string> = {
-  xs: "w-8 h-11 text-[10px] rounded-md",
-  sm: "card-sm rounded-md",
-  md: "card-md rounded-lg",
+  xs: "rounded-md",
+  sm: "rounded-md",
+  md: "rounded-lg",
+};
+/* Inline sizes so button height/font defaults can never squash the card's 1:1.43 shape. */
+const sizeStyle = (w: string, font: number): React.CSSProperties => ({ width: w, height: `calc(${w} * 1.43)`, fontSize: `calc(${w} * ${font})` });
+const SIZE_STYLE: Record<Size, React.CSSProperties> = {
+  xs: sizeStyle("2rem", 0.31),
+  sm: sizeStyle("var(--card-sm-w)", 0.3),
+  md: sizeStyle("var(--card-md-w)", 0.27),
 };
 
 export function PlayingCard({
@@ -44,12 +51,12 @@ export function PlayingCard({
   );
   const classes = cn("relative shrink-0 select-none border border-card-edge bg-card-face shadow-card transition-all duration-150 p-0 hover:bg-card-face", red ? "text-suit-red" : "text-suit-black", SIZES[size], selected && "-translate-y-3 shadow-lift", dim && "opacity-40", onClick && "active:scale-95", className);
   const label = joker ? "Joker" : `${rankLabel(card.rank)} ${SUIT_SYMBOL[card.suit]}`;
-  if (onClick) return <Button variant="ghost" onClick={onClick} aria-label={label} aria-pressed={!!selected} className={classes}>{content}</Button>;
+  if (onClick) return <Button variant="ghost" onClick={onClick} aria-label={label} aria-pressed={!!selected} className={classes} style={SIZE_STYLE[size]}>{content}</Button>;
   return (
-    <div aria-label={label} className={classes}>{content}</div>
+    <div aria-label={label} className={classes} style={SIZE_STYLE[size]}>{content}</div>
   );
 }
 
 export function CardBack({ size = "md", className }: { size?: Size; className?: string }) {
-  return <div className={cn("card-back shrink-0 shadow-card", SIZES[size], className)} />;
+  return <div className={cn("card-back shrink-0 shadow-card", SIZES[size], className)} style={SIZE_STYLE[size]} />;
 }
