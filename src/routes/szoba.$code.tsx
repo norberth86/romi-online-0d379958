@@ -574,7 +574,7 @@ function PresenceDot({ on, hidden }: { on: boolean; hidden?: boolean }) {
 
 function MeldRow({ melds, label, onTap, active }: { melds: PublicState["melds"]; label: string; onTap: (id: string) => void; active: boolean }) {
   return (
-    <div className="min-h-[3.75rem]">
+    <div className="shrink-0">
       <p className="mb-1 px-1 text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
       {melds.length === 0 ? (
         <p className="px-1 text-xs italic text-muted-foreground/70">Még nincs lerakott lap</p>
@@ -585,7 +585,7 @@ function MeldRow({ melds, label, onTap, active }: { melds: PublicState["melds"];
               key={m.id}
               type="button"
               onClick={() => onTap(m.id)}
-              className={cn("flex -space-x-5 rounded-lg p-1 transition", active && "ring-2 ring-primary/70 ring-dashed bg-primary/10")}
+              className={cn("flex -space-x-[calc(var(--card-sm-w)*0.42)] rounded-lg p-1 transition", active && "ring-2 ring-primary/70 ring-dashed bg-primary/10")}
               aria-label="Hozzárakás ehhez a kombinációhoz"
             >
               {m.cards.map((c) => (
