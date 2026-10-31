@@ -1,8 +1,11 @@
 # Römi módosítások
-- [ ] Kártyák és visszajelzések nagyítása.
-- [ ] Több, soron kívül is szerkeszthető és dobáskor megmaradó előkészítés.
-- [ ] Soron kívüli, kizárólag kézből záró handi lap.
-- [ ] Joker kiváltása kézbe, kötelező újrafelhasználással.
-- [ ] Kizárólag dobással lehessen nyerni.
-- [ ] Négy különböző színű teljes sor levétele az asztalról.
-- [ ] Szabálytesztek és két játékos közötti ellenőrzés.
+- [x] Kártyák és visszajelzések nagyítása.
+- [x] Több, soron kívül is szerkeszthető és dobáskor megmaradó előkészítés.
+- [x] Soron kívüli, kizárólag kézből záró handi lap.
+- [x] Joker kiváltása kézbe, kötelező újrafelhasználással.
+- [x] Kizárólag dobással lehessen nyerni.
+- [x] Négy különböző színű teljes sor levétele az asztalról.
+- [x] Szabálytesztek.
+- [x] Szobánként választható max. büntetőpont, elérésekor vége a játéknak.
+- [x] Kombinációnként legfeljebb 1 joker.
+- [x] A teljes játék kiférjen a képernyőre, görgetés nélkül.
