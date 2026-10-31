@@ -9,6 +9,11 @@ export const STARTER_HAND = 15;
 export const SECOND_HAND = 14;
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 4;
+/** Selectable match-ending penalty limits (per room). */
+export const PENALTY_LIMITS = [200, 300, 500, 1000] as const;
+export const DEFAULT_PENALTY_LIMIT = 500;
+export const MAX_JOKERS_PER_MELD = 1;
+const JOKER_LIMIT_MSG = "Egy kombinációban legfeljebb egy joker lehet.";
 const SUITS: Suit[] = ["S", "H", "D", "C"];
 
 export function makeDeck(): Card[] {
@@ -58,6 +63,7 @@ function analyzeSet(cards: Card[]): Analysis {
   const nat = cards.filter((c) => !isJoker(c));
   const jok = cards.length - nat.length;
   if (cards.length < 3 || cards.length > 4) return { ok: false, reason: "Egy sor 3–4 lapból áll." };
+  if (jok > MAX_JOKERS_PER_MELD) return { ok: false, reason: JOKER_LIMIT_MSG };
   if (nat.length === 0 || jok > nat.length) return { ok: false, reason: "Túl sok joker." };
   const rank = nat[0]!.rank;
   if (nat.some((c) => c.rank !== rank)) return { ok: false, reason: "Nem azonos értékűek." };
@@ -72,6 +78,7 @@ function analyzeRun(cards: Card[]): Analysis {
   const len = cards.length;
   if (len < 3) return { ok: false, reason: "Legalább 3 lap kell." };
   if (len > 13) return { ok: false, reason: "Túl hosszú sorozat." };
+  if (jokers.length > MAX_JOKERS_PER_MELD) return { ok: false, reason: JOKER_LIMIT_MSG };
   if (nat.length === 0 || jokers.length > nat.length) return { ok: false, reason: "Túl sok joker." };
   if (nat.some((c) => c.suit !== nat[0]!.suit)) return { ok: false, reason: "Nem azonos színűek." };
   for (const aceHigh of [false, true]) {
@@ -106,6 +113,7 @@ export function analyzeMeld(cards: Card[]): Analysis {
   const r = analyzeRun(cards);
   if (r.ok) return r;
   const nat = cards.filter((c) => !isJoker(c));
+  if (cards.length - nat.length > MAX_JOKERS_PER_MELD) return { ok: false, reason: JOKER_LIMIT_MSG };
   const sameRank = nat.every((c) => c.rank === nat[0]?.rank);
   return sameRank ? s : r;
 }
@@ -154,6 +162,10 @@ export type GameState = {
   discardRefused?: boolean;
   meldCounter: number;
   log: string[];
+  /** Match ends when any player's cumulative penalty reaches this. */
+  maxPenalty?: number;
+  /** The whole match is over (someone reached maxPenalty). */
+  matchOver?: boolean;
 };
 
 export type Action =
@@ -171,12 +183,13 @@ export type Action =
 
 export class RuleError extends Error {}
 
-export function newGame(code: string, size = 2): GameState {
+export function newGame(code: string, size = 2, maxPenalty: number = DEFAULT_PENALTY_LIMIT): GameState {
   const n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, Math.floor(size)));
   return {
     v: 0, code, status: "lobby", players: Array.from({ length: n }, () => null), stock: [], discard: [], melds: [],
     turn: 0, phase: "draw", starter: 0, round: 0, winner: null, lastRoundPoints: 0,
     takenFromDiscard: null, meldCounter: 0, log: [],
+    maxPenalty: (PENALTY_LIMITS as readonly number[]).includes(maxPenalty) ? maxPenalty : DEFAULT_PENALTY_LIMIT, matchOver: false,
   };
 }
 
@@ -294,6 +307,21 @@ function finishRound(s: GameState, winner: number) {
   s.status = "finished";
   s.starter = nextSeat(s, s.starter);
   log(s, `${s.players[winner]!.name} kiment${s.lastRoundHand ? " kézből" : ""}!`);
+  const limit = s.maxPenalty ?? DEFAULT_PENALTY_LIMIT;
+  if (s.players.some((p) => p && p.score >= limit)) {
+    s.matchOver = true;
+    const champ = matchWinner(s);
+    log(s, `Elérte valaki a ${limit} büntetőpontot – a játék véget ért. Győztes: ${champ != null ? s.players[champ]!.name : "–"}.`);
+  }
+}
+
+/** Seat with the lowest cumulative penalty (ties: the round winner, then lowest seat). */
+export function matchWinner(s: GameState): number | null {
+  const sat = seats(s);
+  if (!sat.length) return null;
+  const min = Math.min(...sat.map((i) => s.players[i]!.score));
+  const best = sat.filter((i) => s.players[i]!.score === min);
+  return s.winner != null && best.includes(s.winner) ? s.winner : best[0]!;
 }
 
 export function applyAction(s: GameState, seat: number, a: Action, rand?: () => number): GameState {
@@ -310,7 +338,15 @@ export function applyAction(s: GameState, seat: number, a: Action, rand?: () => 
   if (a.type === "rematch") {
     if (s.status !== "finished") throw new RuleError("A játszma még tart.");
     me.rematch = true;
-    if (seats(s).every((i) => s.players[i]!.rematch)) deal(s, rand);
+    if (seats(s).every((i) => s.players[i]!.rematch)) {
+      if (s.matchOver) {
+        // New match: penalties restart from zero.
+        for (const i of seats(s)) s.players[i]!.score = 0;
+        s.matchOver = false;
+        s.round = 0;
+      }
+      deal(s, rand);
+    }
     return s;
   }
 
@@ -496,6 +532,9 @@ export type PublicState = {
   lastRoundPenalties: (number | null)[] | null;
   lastRoundHand: boolean;
   revealedHands: Card[][] | null;
+  maxPenalty: number;
+  matchOver: boolean;
+  matchWinner: number | null;
   /** Whether the player to move may freely take the discard (own first turn or already opened). */
   discardFree: boolean;
   mustOpen: boolean;
@@ -533,5 +572,8 @@ export function toPublic(s: GameState): PublicState {
     revealedHands: s.status === "finished" ? s.players.map((p) => p?.hand ?? []) : null,
     log: s.log,
     v: s.v,
+    maxPenalty: s.maxPenalty ?? DEFAULT_PENALTY_LIMIT,
+    matchOver: !!s.matchOver,
+    matchWinner: s.matchOver ? matchWinner(s) : null,
   };
 }
