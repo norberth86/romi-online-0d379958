@@ -416,7 +416,7 @@ function Game({ code, session }: { code: string; session: Session }) {
         ))}
 
         <div className="flex shrink-0 items-center justify-center gap-4 py-3 sm:gap-8">
-          {pub.handi && <Button variant="ghost" className="card-slot-md relative shrink-0 p-0 hover:bg-transparent" aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
+          {pub.handi && <Button variant="ghost" className="card-slot-md relative h-auto shrink-0 p-0 hover:bg-transparent" style={{ width: "calc(var(--card-md-w) * 1.43)", height: "calc(var(--card-md-w) * 1.43)" }} aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
             if (!pub.handi) return;
             toggle(pub.handi.id);
             setHandiSelected((v) => !v);

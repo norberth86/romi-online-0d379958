@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Card } from "@/lib/rummy/engine";
@@ -14,8 +15,8 @@ const SIZES: Record<Size, string> = {
   md: "rounded-lg",
 };
 /* Inline sizes so button height/font defaults can never squash the card's 1:1.43 shape. */
-const sizeStyle = (w: string, font: number): React.CSSProperties => ({ width: w, height: `calc(${w} * 1.43)`, fontSize: `calc(${w} * ${font})` });
-const SIZE_STYLE: Record<Size, React.CSSProperties> = {
+const sizeStyle = (w: string, font: number): CSSProperties => ({ width: w, height: `calc(${w} * 1.43)`, fontSize: `calc(${w} * ${font})` });
+const SIZE_STYLE: Record<Size, CSSProperties> = {
   xs: sizeStyle("2rem", 0.31),
   sm: sizeStyle("var(--card-sm-w)", 0.3),
   md: sizeStyle("var(--card-md-w)", 0.27),
