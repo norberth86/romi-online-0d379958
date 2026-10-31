@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { analyzeMeld, applyAction, newGame, RuleError, toPublic, type Action, type Card, type GameState } from "./engine";
+import { analyzeMeld, applyAction, DEFAULT_PENALTY_LIMIT, newGame, PENALTY_LIMITS, RuleError, toPublic, type Action, type Card, type GameState } from "./engine";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -74,14 +74,14 @@ const nameSchema = z.string().trim().min(1).max(20);
 const codeSchema = z.string().trim().toUpperCase().length(5);
 
 export const createRoom = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ name: nameSchema, size: z.number().int().min(2).max(4).default(2) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ name: nameSchema, size: z.number().int().min(2).max(4).default(2), maxPenalty: z.number().int().refine((n) => (PENALTY_LIMITS as readonly number[]).includes(n)).default(DEFAULT_PENALTY_LIMIT) }).parse(d))
   .handler(({ data }) =>
     wrap(async () => {
       const db = await admin();
       for (let i = 0; i < 6; i++) {
         const code = randomCode();
         const token = randomToken();
-        const s = newGame(code, data.size);
+        const s = newGame(code, data.size, data.maxPenalty);
         s.players[0] = { name: data.name, token, hand: [], opened: false, score: 0, ready: false, rematch: false };
         s.v = 1;
         const { error } = await db
