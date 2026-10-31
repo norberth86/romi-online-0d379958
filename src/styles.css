@@ -121,6 +121,9 @@
   --sidebar-accent-foreground: oklch(0.95 0.02 90);
   --sidebar-border: oklch(0.8 0.13 82 / 22%);
   --sidebar-ring: oklch(0.8 0.13 82);
+  /* Card widths scale with both screen height and width so the whole table fits any phone. */
+  --card-md-w: clamp(2.4rem, min(6.2dvh, 11.2vw), 4.4rem);
+  --card-sm-w: clamp(1.75rem, min(4.4dvh, 8.4vw), 3rem);
 }
 
 @layer base {
@@ -164,6 +167,9 @@
   border: 3px solid var(--card-face);
 }
 @keyframes deal-in { from { transform: translateY(18px) scale(.9); opacity: 0 } to { transform: none; opacity: 1 } }
+@utility card-md { width: var(--card-md-w); height: calc(var(--card-md-w) * 1.43); font-size: calc(var(--card-md-w) * 0.27); }
+@utility card-sm { width: var(--card-sm-w); height: calc(var(--card-sm-w) * 1.43); font-size: calc(var(--card-sm-w) * 0.3); }
+@utility card-slot-md { width: calc(var(--card-md-w) * 1.43); height: calc(var(--card-md-w) * 1.43); }
 @utility animate-deal { animation: deal-in .28s ease-out both; }
 @keyframes pulse-ring { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 60%, transparent) } 50% { box-shadow: 0 0 0 6px transparent } }
 @utility animate-turn { animation: pulse-ring 1.8s ease-in-out infinite; }

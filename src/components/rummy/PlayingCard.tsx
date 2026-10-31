@@ -10,8 +10,8 @@ export const rankLabel = (r: number) => RANK_LABEL[r] ?? String(r);
 type Size = "xs" | "sm" | "md";
 const SIZES: Record<Size, string> = {
   xs: "w-8 h-11 text-[10px] rounded-md",
-  sm: "w-12 h-[4.25rem] text-sm rounded-md",
-  md: "w-[3.75rem] h-[5.4rem] text-base rounded-lg sm:w-[4.4rem] sm:h-[6.3rem]",
+  sm: "card-sm rounded-md",
+  md: "card-md rounded-lg",
 };
 
 export function PlayingCard({
