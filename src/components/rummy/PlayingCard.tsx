@@ -8,18 +8,21 @@ const RANK_LABEL: Record<number, string> = { 1: "A", 11: "J", 12: "Q", 13: "K" }
 
 export const rankLabel = (r: number) => RANK_LABEL[r] ?? String(r);
 
-type Size = "xs" | "sm" | "md";
+type Size = "xs" | "sm" | "md" | "lg";
 const SIZES: Record<Size, string> = {
   xs: "rounded-md",
   sm: "rounded-md",
   md: "rounded-lg",
+  lg: "rounded-lg",
 };
-/* Inline sizes so button height/font defaults can never squash the card's 1:1.43 shape. */
+/* Inline sizes so button height/font defaults can never squash the card's 1:1.43 shape.
+   xs = ellenfél lapjai, sm = asztali kombinációk és előkészítés, md = húzó/dobó pakli, lg = a saját kéz. */
 const sizeStyle = (w: string, font: number): CSSProperties => ({ width: w, height: `calc(${w} * 1.43)`, fontSize: `calc(${w} * ${font})` });
 const SIZE_STYLE: Record<Size, CSSProperties> = {
   xs: sizeStyle("2rem", 0.31),
-  sm: sizeStyle("var(--card-sm-w)", 0.3),
-  md: sizeStyle("var(--card-md-w)", 0.27),
+  sm: sizeStyle("var(--card-sm-w)", 0.34),
+  md: sizeStyle("var(--card-md-w)", 0.28),
+  lg: sizeStyle("var(--card-lg-w)", 0.27),
 };
 
 export function PlayingCard({
@@ -40,10 +43,13 @@ export function PlayingCard({
   const joker = card.suit === "X";
   const red = card.suit === "H" || card.suit === "D";
   const content = joker ? (
-    <span className="absolute inset-0 flex flex-col items-center justify-center font-display font-bold text-suit-red">
-      <span className="text-[1.6em] leading-none">★</span>
-      <span className="text-[0.55em] tracking-tight">JOKER</span>
-    </span>
+    <>
+      {/* A JOKER betűi függőlegesen a bal szélen, hogy az átfedő lap ne takarja ki őket. */}
+      <span className="absolute left-[0.22em] top-[0.25em] flex flex-col items-center font-display text-[0.5em] font-bold leading-[1.05] text-suit-red">
+        {"JOKER".split("").map((l, i) => <span key={i}>{l}</span>)}
+      </span>
+      <span className="absolute inset-0 flex items-center justify-center pl-[0.35em] font-display text-[2.2em] font-bold leading-none text-suit-red">★</span>
+    </>
   ) : (
     <>
       <span className="absolute left-1 top-0.5 flex flex-col items-center font-bold leading-none"><span>{rankLabel(card.rank)}</span><span>{SUIT_SYMBOL[card.suit]}</span></span>
