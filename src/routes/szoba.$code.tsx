@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDownUp, Check, Copy, Layers, Share2, Trash2, Wifi, WifiOff, X } from "lucide-react";
+import { ArrowDownUp, Check, Copy, Layers, Pencil, Share2, Trash2, Wifi, WifiOff, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,7 +352,7 @@ function Game({ code, session }: { code: string; session: Session }) {
           {me?.ready ? "Mégsem vagyok kész" : "Kész vagyok"}
         </Button>
         <p className="text-center text-sm text-muted-foreground">
-          {pub.players.length} fős szoba. A játék akkor indul, ha legalább ketten vagytok és minden csatlakozott játékos kész.
+          {pub.players.length} fős szoba, a játék {pub.maxPenalty} büntetőpontig tart. A játék akkor indul, ha legalább ketten vagytok és minden csatlakozott játékos kész.
         </p>
       </main>
     );
@@ -361,20 +361,40 @@ function Game({ code, session }: { code: string; session: Session }) {
   // ---------------- Table ----------------
   const myMelds = pub.melds.filter((m) => m.owner === seat);
 
+  const bannerText = pub.status === "finished"
+    ? "A játszma véget ért"
+    : myTurn
+      ? pub.phase === "draw"
+        ? pub.discardRefused
+          ? "Húzz egy lapot a pakliból."
+          : pub.discardFree
+            ? "Te jössz! Húzz a pakliból vagy vedd fel a dobott lapot."
+            : `Te jössz! A dobott lapot csak akkor veheted fel, ha vele együtt legalább ${OPEN_MIN} ponttal lepakolsz.`
+        : pub.firstTurn && pub.discardCount === 0
+          ? "Te kezdesz! Válassz ki és dobj el egy lapot (lepakolhatsz is, ha megvan az 51 pont)."
+          : pub.mustOpen
+            ? `Pakolj le legalább ${OPEN_MIN} ponttal a felvett (keretezett) lappal együtt, vagy tedd vissza.`
+            : requiredJokers.length > 0
+              ? "A kiváltott jokert még ebben a körben rakd le vagy szúrd be, majd dobj egy lapot."
+              : me?.opened
+                ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
+                : `Lepakoláshoz gyűjts legalább ${OPEN_MIN} pontot, majd dobj el egy lapot.`
+      : `${turnName ?? "A következő játékos"} következik…`;
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-2 px-2 pb-2 pt-2 sm:px-4">
+    <main className="mx-auto flex h-dvh max-w-3xl flex-col gap-1.5 overflow-hidden px-2 py-1.5 sm:px-4">
       {status}
 
       {/* Opponents */}
-      <div className={cn("grid gap-2", opps.length === 3 ? "grid-cols-3" : opps.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
+      <div className={cn("grid shrink-0 gap-1.5", opps.length === 3 ? "grid-cols-3" : opps.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
         {opps.map(({ p, i }) => (
-          <section key={i} className={cn("felt-panel flex items-center justify-between gap-2 px-3 py-2", pub.turn === i && pub.status === "playing" && "animate-turn")}>
+          <section key={i} className={cn("felt-panel flex items-center justify-between gap-2 px-2.5 py-1.5", pub.turn === i && pub.status === "playing" && "animate-turn")}>
             <div className="flex min-w-0 items-center gap-2">
               <PresenceDot on={online.has(i)} />
               <div className="min-w-0">
-                <p className="truncate font-bold">{p.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {p.handCount} lap · {p.score} bp {p.opened ? "· lepakolt" : ""}
+                <p className="truncate text-sm font-bold">{p.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {p.handCount} lap · {p.score}/{pub.maxPenalty} bp {p.opened ? "· lepakolt" : ""}
                 </p>
               </div>
             </div>
@@ -389,18 +409,18 @@ function Game({ code, session }: { code: string; session: Session }) {
         ))}
       </div>
 
-      {/* Table */}
-      <section className="flex flex-1 flex-col gap-2 rounded-2xl border border-border p-2" style={{ minHeight: 0 }}>
+      {/* Table – the only part that scrolls, so the hand and buttons always stay on screen */}
+      <section className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-2xl border border-border p-1.5">
         {opps.map(({ p, i }) => (
           <MeldRow key={i} melds={pub.melds.filter((m) => m.owner === i)} label={`${p.name} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
         ))}
 
-        <div className="flex items-center justify-center gap-5 py-5 sm:gap-8">
-          {pub.handi && <Button variant="ghost" className="relative h-[5.4rem] w-[5.4rem] shrink-0 p-0 hover:bg-transparent sm:h-[6.3rem] sm:w-[6.3rem]" aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
+        <div className="flex shrink-0 items-center justify-center gap-4 py-3 sm:gap-8">
+          {pub.handi && <Button variant="ghost" className="card-slot-md relative shrink-0 p-0 hover:bg-transparent" aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
             if (!pub.handi) return;
             toggle(pub.handi.id);
             setHandiSelected((v) => !v);
-          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-4 text-sm font-bold text-primary">Handi</span></Button>}
+          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-3 text-xs font-bold text-primary">Handi</span></Button>}
           <Button variant="ghost"
             type="button"
             onClick={() => act({ type: "drawStock" })}
@@ -421,7 +441,7 @@ function Game({ code, session }: { code: string; session: Session }) {
             {pub.discardTop ? (
               <PlayingCard card={pub.discardTop} />
             ) : (
-              <div className="flex h-[5.4rem] w-[3.75rem] items-center justify-center rounded-lg border-2 border-dashed border-border text-sm text-muted-foreground sm:h-[6.3rem] sm:w-[4.4rem]">üres</div>
+              <div className="card-md flex items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground">üres</div>
             )}
             <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background px-2 text-xs font-bold">{pub.discardCount}</span>
           </Button>
@@ -431,45 +451,30 @@ function Game({ code, session }: { code: string; session: Session }) {
       </section>
 
       {/* Turn banner */}
-      <div className={cn("rounded-xl px-3 py-3 text-center text-base font-semibold", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
-        {pub.status === "finished"
-          ? "A játszma véget ért"
-          : myTurn
-            ? pub.phase === "draw"
-              ? pub.discardRefused
-                ? "Húzz egy lapot a pakliból."
-                : pub.discardFree
-                  ? "Te jössz! Húzz a pakliból vagy vedd fel a dobott lapot."
-                  : `Te jössz! A dobott lapot csak akkor veheted fel, ha vele együtt legalább ${OPEN_MIN} ponttal lepakolsz.`
-              : pub.firstTurn && pub.discardCount === 0
-                ? "Te kezdesz! Válassz ki és dobj el egy lapot (lepakolhatsz is, ha megvan az 51 pont)."
-                : pub.mustOpen
-                ? `Pakolj le legalább ${OPEN_MIN} ponttal a felvett (keretezett) lappal együtt, vagy tedd vissza.`
-              : requiredJokers.length > 0
-                ? "A kiváltott jokert még ebben a körben rakd le vagy szúrd be, majd dobj egy lapot."
-              : me?.opened
-                ? "Rakj le, rakj hozzá (koppints egy kombinációra), majd dobj el egy lapot."
-                : `Lepakoláshoz gyűjts legalább ${OPEN_MIN} pontot, majd dobj el egy lapot.`
-            : `${turnName ?? "A következő játékos"} következik…`}
+      <div className={cn("shrink-0 rounded-xl px-3 py-1.5 text-center text-sm font-semibold leading-snug", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
+        {bannerText}
       </div>
 
       {canPlay && pub.mustOpen && (
-        <Button variant="felt" className="w-full" disabled={busy} onClick={() => act({ type: "returnDiscard" })}>
+        <Button variant="felt" className="w-full shrink-0" disabled={busy} onClick={() => act({ type: "returnDiscard" })}>
           <X /> Visszateszem a dobott lapot
         </Button>
       )}
 
-      {/* Staging for first meld */}
+      {/* Preparation: compact, scrolls sideways instead of pushing the hand off screen */}
       {staged.length > 0 && (
-        <section className="felt-panel space-y-2 p-2">
-          <div className="flex items-center justify-between px-1 text-sm">
-            <span className="font-semibold text-base">Előkészítés: {stagedPoints} pont{!me?.opened && ` / ${OPEN_MIN}`}</span>
-            <Button variant="ghost" size="icon" onClick={() => { setStaged([]); setEditing(null); }} aria-label="Előkészítés törlése"><X /></Button>
+        <section className="felt-panel shrink-0 space-y-1.5 p-1.5">
+          <div className="flex items-center gap-2">
+            <span className="flex-1 truncate px-1 text-sm font-semibold">Előkészítés: {stagedPoints}{!me?.opened && ` / ${OPEN_MIN}`} pont</span>
+            <Button variant="gold" size="sm" disabled={!stagedValid || (!me?.opened && stagedPoints < OPEN_MIN) || busy || (handiPrepared ? me?.opened || closingCard.length !== 1 : !canPlay)} onClick={onOpen}>
+              <Check /> {handiPrepared ? "Handi" : me?.opened ? "Lerakás" : "Lepakolás"}
+            </Button>
+            <Button variant="ghost" size="icon" className="size-8" onClick={() => { setStaged([]); setEditing(null); }} aria-label="Előkészítés törlése"><X /></Button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
             {staged.map((g, i) => (
-              <div key={i} className={cn("flex flex-col gap-2 rounded-md border border-border p-2", editing === i && "ring-2 ring-primary")}>
-                <div className="flex flex-wrap gap-1">{g.map((id) => {
+              <div key={i} className={cn("flex shrink-0 flex-col gap-1 rounded-md border border-border p-1", editing === i && "ring-2 ring-primary", analyses[i] && !analyses[i].ok && "border-destructive")}>
+                <div className="flex gap-0.5">{g.map((id) => {
                   const card = byId.get(id);
                   return card ? <PlayingCard key={id} card={card} size="sm" onClick={() => {
                     setStaged((groups) => groups.map((group, j) => j === i ? group.filter((x) => x !== id) : group));
@@ -477,46 +482,46 @@ function Game({ code, session }: { code: string; session: Session }) {
                     if (id === pub.handi?.id) setHandiSelected(false);
                   }} /> : null;
                 })}</div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-muted-foreground">{analyses[i]?.ok ? `${analyses[i].points} pont` : "Hiányos kombináció"}</span>
-                  <Button variant="felt" size="sm" onClick={() => { setEditing(i); setSelected(g); }}>Módosít</Button>
-                  <Button variant="ghost" size="icon" aria-label={`${i + 1}. előkészítés törlése`} onClick={() => { setStaged((groups) => groups.filter((_, j) => j !== i)); setEditing(null); setSelected([]); }}><X /></Button>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs text-muted-foreground">{analyses[i]?.ok ? `${analyses[i].points} p` : "Hiányos"}</span>
+                  <div className="flex">
+                    <Button variant="ghost" size="icon" className="size-7" aria-label={`${i + 1}. előkészítés módosítása`} onClick={() => { setEditing(i); setSelected(g); }}><Pencil /></Button>
+                    <Button variant="ghost" size="icon" className="size-7" aria-label={`${i + 1}. előkészítés törlése`} onClick={() => { setStaged((groups) => groups.filter((_, j) => j !== i)); setEditing(null); setSelected([]); }}><X /></Button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-          <Button variant="gold" className="w-full" disabled={!stagedValid || (!me?.opened && stagedPoints < OPEN_MIN) || busy || (handiPrepared ? me?.opened || closingCard.length !== 1 : !canPlay)} onClick={onOpen}>
-            <Check /> {handiPrepared ? "Handi – záródobással" : me?.opened ? "Lerakás" : "Lepakolás"} ({stagedPoints} pont)
-          </Button>
         </section>
       )}
 
       {/* Actions */}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        <Button variant="felt" size="xl" className="px-2 text-base" onClick={onMeldButton} disabled={pub.status !== "playing" || busy || selected.length < 3}>
+      <div className="grid shrink-0 grid-cols-4 gap-1.5">
+        <Button variant="felt" className="px-1 text-sm" onClick={onMeldButton} disabled={pub.status !== "playing" || busy || selected.length < 3}>
           <Layers /> {editing !== null ? "Mentés" : "Előkészít"}
         </Button>
-        <Button variant="gold" size="xl" className="px-2 text-base" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen || requiredJokers.length > 0 || selected[0] === pub.handi?.id}>
+        <Button variant="gold" className="px-1 text-sm" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen || requiredJokers.length > 0 || selected[0] === pub.handi?.id}>
           <Trash2 /> Eldob
         </Button>
-        <Button variant="felt" size="xl" className="px-2 text-sm" onClick={() => sortHand("suit")}>
+        <Button variant="felt" className="px-1 text-sm" onClick={() => sortHand("suit")}>
           <ArrowDownUp /> Szín
         </Button>
-        <Button variant="felt" size="xl" className="px-2 text-sm" onClick={() => sortHand("rank")}>
+        <Button variant="felt" className="px-1 text-sm" onClick={() => sortHand("rank")}>
           <ArrowDownUp /> Érték
         </Button>
       </div>
-      {selCards.length >= 3 && (
-        <p className={cn("text-center text-base", selAnalysis?.ok ? "text-success" : "text-destructive")}>
-          {selAnalysis?.ok ? `Érvényes ${selAnalysis.kind === "set" ? "sor" : "sorozat"} · ${selAnalysis.points} pont` : selAnalysis?.reason ?? "Ellenőrzés…"}
-        </p>
-      )}
 
       {/* My hand */}
-      <section className={cn("felt-panel px-2 pb-2 pt-5", myTurn && "animate-turn")}>
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-1 px-1 text-sm text-muted-foreground">
-          <span className="font-bold text-foreground">{me?.name} (te) · {me?.score ?? 0} büntetőpont</span>
-          <span>{hand.length} lap {selected.length > 0 && `· ${selected.length} kijelölve`}</span>
+      <section className={cn("felt-panel shrink-0 px-1.5 pb-1.5 pt-1", myTurn && "animate-turn")}>
+        <div className="mb-1 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
+          <span className="truncate font-bold text-foreground">{me?.name} (te) · {me?.score ?? 0}/{pub.maxPenalty} bp</span>
+          {selCards.length >= 3 ? (
+            <span className={cn("truncate font-semibold", selAnalysis?.ok ? "text-success" : "text-destructive")}>
+              {selAnalysis?.ok ? `${selAnalysis.kind === "set" ? "Sor" : "Sorozat"} · ${selAnalysis.points} pont` : selAnalysis?.reason ?? "Ellenőrzés…"}
+            </span>
+          ) : (
+            <span className="shrink-0">{hand.length} lap{selected.length > 0 && ` · ${selected.length} kijelölve`}</span>
+          )}
         </div>
         <div className="flex flex-wrap justify-center gap-1 pt-2">
           {visibleHand.map((c) => (
@@ -531,7 +536,7 @@ function Game({ code, session }: { code: string; session: Session }) {
         </div>
       </section>
 
-      {pub.log.length > 0 && <p className="px-1 text-center text-sm text-muted-foreground">{pub.log[pub.log.length - 1]}</p>}
+      {pub.log.length > 0 && <p className="shrink-0 truncate px-1 text-center text-xs text-muted-foreground">{pub.log[pub.log.length - 1]}</p>}
 
       {pub.status === "finished" && (
         <FinishedOverlay pub={pub} seat={seat} busy={busy} onRematch={() => act({ type: "rematch" })} />
@@ -602,7 +607,13 @@ function FinishedOverlay({ pub, seat, busy, onRematch }: { pub: PublicState; sea
   const leader = Math.min(...pub.players.flatMap((p) => (p ? [p.score] : [])));
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm">
-      <div className="felt-panel w-full max-w-sm space-y-4 p-6 text-center animate-deal">
+      <div className="felt-panel my-auto max-h-full w-full max-w-sm space-y-4 overflow-y-auto p-6 text-center animate-deal">
+        {pub.matchOver && (
+          <div className="rounded-xl bg-gold px-3 py-2 text-primary-foreground">
+            <p className="text-xs font-semibold uppercase tracking-widest">Vége a játéknak – elérte valaki a {pub.maxPenalty} pontot</p>
+            <p className="font-display text-2xl font-bold">{pub.matchWinner === seat ? "Te nyertél!" : `${pub.matchWinner != null ? pub.players[pub.matchWinner]?.name : ""} nyert`}</p>
+          </div>
+        )}
         <h2 className="text-gold text-3xl font-bold">{won ? "Kimentél!" : `${winnerName} kiment`}</h2>
         {pub.lastRoundHand && <p className="text-sm font-semibold text-primary">Kézből ment ki – dupla büntetés!</p>}
         <div className="divide-y divide-border rounded-xl bg-muted/50">
@@ -617,7 +628,7 @@ function FinishedOverlay({ pub, seat, busy, onRematch }: { pub: PublicState; sea
             ) : null,
           )}
         </div>
-        <p className="text-xs text-muted-foreground">Büntetőpontok – a kevesebb a jobb.</p>
+        <p className="text-xs text-muted-foreground">Büntetőpontok – a kevesebb a jobb. Határ: {pub.maxPenalty} pont.</p>
         {pub.players.map((p, i) =>
           p && i !== seat && (pub.revealedHands?.[i]?.length ?? 0) > 0 ? (
             <div key={i}>
@@ -629,7 +640,7 @@ function FinishedOverlay({ pub, seat, busy, onRematch }: { pub: PublicState; sea
           ) : null,
         )}
         <Button variant="gold" size="xl" className="w-full" onClick={onRematch} disabled={busy || meReady}>
-          {meReady ? (waiting ? `Várakozás (${waiting})…` : "Indul…") : "Új játszma"}
+          {meReady ? (waiting ? `Várakozás (${waiting})…` : "Indul…") : pub.matchOver ? "Új játék (pontok nullázása)" : "Új játszma"}
         </Button>
         <Link to="/" className="block text-sm text-muted-foreground underline">Kilépés a főoldalra</Link>
       </div>
