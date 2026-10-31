@@ -382,19 +382,21 @@ function Game({ code, session }: { code: string; session: Session }) {
       : `${turnName ?? "A következő játékos"} következik…`;
 
   return (
-    <main className="mx-auto flex h-dvh max-w-3xl flex-col gap-1.5 overflow-hidden px-2 py-1.5 sm:px-4">
+    <main className="mx-auto flex h-dvh max-w-3xl flex-col gap-1 overflow-hidden px-2 py-1 sm:px-4">
       {status}
 
       {/* Opponents */}
       <div className={cn("grid shrink-0 gap-1.5", opps.length === 3 ? "grid-cols-3" : opps.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
         {opps.map(({ p, i }) => (
-          <section key={i} className={cn("felt-panel flex items-center justify-between gap-2 px-2.5 py-1.5", pub.turn === i && pub.status === "playing" && "animate-turn")}>
+          <section key={i} className={cn("felt-panel flex items-center justify-between gap-1.5 px-2 py-1", pub.turn === i && pub.status === "playing" && "animate-turn")}>
             <div className="flex min-w-0 items-center gap-2">
               <PresenceDot on={online.has(i)} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold">{p.name}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {p.handCount} lap · {p.score}/{pub.maxPenalty} bp {p.opened ? "· lepakolt" : ""}
+                <p className={cn("truncate text-muted-foreground", opps.length === 1 ? "text-xs" : "text-[11px]")}>
+                  {opps.length === 1
+                    ? `${p.handCount} lap · ${p.score}/${pub.maxPenalty} bp${p.opened ? " · lepakolt" : ""}`
+                    : `${p.handCount} lap · ${p.score} bp`}
                 </p>
               </div>
             </div>
@@ -409,18 +411,15 @@ function Game({ code, session }: { code: string; session: Session }) {
         ))}
       </div>
 
-      {/* Table – the only part that scrolls, so the hand and buttons always stay on screen */}
-      <section className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-2xl border border-border p-1.5">
-        {opps.map(({ p, i }) => (
-          <MeldRow key={i} melds={pub.melds.filter((m) => m.owner === i)} label={`${p.name} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
-        ))}
-
-        <div className="flex shrink-0 items-center justify-center gap-4 py-3 sm:gap-8">
-          {pub.handi && <Button variant="ghost" className="card-slot-md relative h-auto shrink-0 p-0 hover:bg-transparent" style={{ width: "calc(var(--card-md-w) * 1.43)", height: "calc(var(--card-md-w) * 1.43)" }} aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
+      {/* Table – only the melds area scrolls; piles, hand and buttons always stay on screen */}
+      <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border p-1.5">
+        {/* Húzó/dobó pakli és handi: mindig látszik, nem görög el – csak a kombinációk görgethetők alattuk. */}
+        <div className="flex shrink-0 items-end justify-center gap-4 pb-3 pt-1 sm:gap-8">
+          {pub.handi && <Button variant="ghost" className="card-slot-md relative h-auto shrink-0 p-0 hover:bg-transparent" style={{ width: "calc(var(--card-md-w) * 1.43)", height: "var(--card-md-w)" }} aria-label="Handi lap előkészítése" disabled={me?.opened || busy || stagedIds.has(pub.handi.id)} onClick={() => {
             if (!pub.handi) return;
             toggle(pub.handi.id);
             setHandiSelected((v) => !v);
-          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-5 text-xs font-bold text-primary">Handi</span></Button>}
+          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background px-2 text-xs font-bold text-primary">Handi</span></Button>}
           <Button variant="ghost"
             type="button"
             onClick={() => act({ type: "drawStock" })}
@@ -446,12 +445,16 @@ function Game({ code, session }: { code: string; session: Session }) {
             <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background px-2 text-xs font-bold">{pub.discardCount}</span>
           </Button>
         </div>
-
-        <MeldRow melds={myMelds} label="A te kombinációid" onTap={onMeldTap} active={canPlay && selected.length > 0} />
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain border-t border-border/50 pt-1.5">
+          {opps.map(({ p, i }) => (
+            <MeldRow key={i} melds={pub.melds.filter((m) => m.owner === i)} label={`${p.name} kombinációi`} onTap={onMeldTap} active={canPlay && selected.length > 0} />
+          ))}
+          <MeldRow melds={myMelds} label="A te kombinációid" onTap={onMeldTap} active={canPlay && selected.length > 0} />
+        </div>
       </section>
 
       {/* Turn banner */}
-      <div className={cn("shrink-0 rounded-xl px-3 py-1.5 text-center text-sm font-semibold leading-snug", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
+      <div className={cn("shrink-0 rounded-xl px-3 py-1 text-center text-[13px] font-semibold leading-tight", myTurn ? "bg-gold text-primary-foreground" : "bg-muted text-muted-foreground")}>
         {bannerText}
       </div>
 
@@ -497,16 +500,16 @@ function Game({ code, session }: { code: string; session: Session }) {
 
       {/* Actions */}
       <div className="grid shrink-0 grid-cols-4 gap-1.5">
-        <Button variant="felt" className="px-1 text-sm" onClick={onMeldButton} disabled={pub.status !== "playing" || busy || selected.length < 3}>
+        <Button variant="felt" className="h-11 flex-col gap-0.5 px-1 py-1 text-xs leading-none" onClick={onMeldButton} disabled={pub.status !== "playing" || busy || selected.length < 3}>
           <Layers /> {editing !== null ? "Mentés" : "Előkészít"}
         </Button>
-        <Button variant="gold" className="px-1 text-sm" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen || requiredJokers.length > 0 || selected[0] === pub.handi?.id}>
+        <Button variant="gold" className="h-11 flex-col gap-0.5 px-1 py-1 text-xs leading-none" onClick={onDiscard} disabled={!canPlay || busy || selected.length !== 1 || pub.mustOpen || requiredJokers.length > 0 || selected[0] === pub.handi?.id}>
           <Trash2 /> Eldob
         </Button>
-        <Button variant="felt" className="px-1 text-sm" onClick={() => sortHand("suit")}>
+        <Button variant="felt" className="h-11 flex-col gap-0.5 px-1 py-1 text-xs leading-none" onClick={() => sortHand("suit")}>
           <ArrowDownUp /> Szín
         </Button>
-        <Button variant="felt" className="px-1 text-sm" onClick={() => sortHand("rank")}>
+        <Button variant="felt" className="h-11 flex-col gap-0.5 px-1 py-1 text-xs leading-none" onClick={() => sortHand("rank")}>
           <ArrowDownUp /> Érték
         </Button>
       </div>
@@ -523,11 +526,16 @@ function Game({ code, session }: { code: string; session: Session }) {
             <span className="shrink-0">{hand.length} lap{selected.length > 0 && ` · ${selected.length} kijelölve`}</span>
           )}
         </div>
-        <div className="flex flex-wrap justify-center gap-1 pt-2">
+        {/* 8 oszlop: a lapok kb. 28%-ban átfedik egymást (a bal felső index végig látszik), így 15 lap is csak két sor. */}
+        <div
+          className="grid justify-center gap-y-1.5 pt-3"
+          style={{ gridTemplateColumns: "repeat(7, calc(var(--card-lg-w) * 0.72)) var(--card-lg-w)" }}
+        >
           {visibleHand.map((c) => (
             <PlayingCard
               key={c.id}
               card={c}
+              size="lg"
               selected={selected.includes(c.id)}
               onClick={() => toggle(c.id)}
               className={cn("animate-deal", (c.id === takenFromDiscard || requiredJokers.includes(c.id)) && "outline-[3px] outline-solid outline-offset-2 outline-primary")}
@@ -547,19 +555,24 @@ function Game({ code, session }: { code: string; session: Session }) {
 
 function StatusBar({ code, rt, onlineCount, oppCount, round }: { code: string; rt: string; onlineCount: number; oppCount: number; round: number }) {
   return (
-    <header className="flex items-center justify-between gap-2 px-1 text-xs">
-      <Link to="/" className="text-gold font-display text-base font-bold">Römi</Link>
-      <div className="flex items-center gap-3 text-muted-foreground">
-        {round > 0 && <span>{round}. játszma</span>}
+    <header className="flex items-center justify-between gap-2 whitespace-nowrap px-1 text-xs">
+      <div className="flex items-baseline gap-2">
+        <Link to="/" className="text-gold font-display text-base font-bold">Römi</Link>
+        {round > 0 && <span className="text-muted-foreground">{round}. játszma</span>}
+      </div>
+      <div className="flex items-center gap-2.5 text-muted-foreground">
         <span className="font-mono font-bold tracking-widest text-foreground">{code}</span>
-        <span className={cn("flex items-center gap-1", rt === "online" ? "text-success" : rt === "offline" ? "text-destructive" : "")}>
-          {rt === "offline" ? <WifiOff className="size-3.5" /> : <Wifi className="size-3.5" />}
-          {rt === "online" ? "Élő" : rt === "offline" ? "Nincs kapcsolat" : "Kapcsolódás"}
+        <span
+          title={rt === "online" ? "Élő kapcsolat" : rt === "offline" ? "Nincs kapcsolat" : "Kapcsolódás…"}
+          className={cn("flex items-center", rt === "online" ? "text-success" : rt === "offline" ? "text-destructive" : "")}
+        >
+          {rt === "offline" ? <WifiOff className="size-4" /> : <Wifi className="size-4" />}
+          <span className="sr-only">{rt === "online" ? "Élő kapcsolat" : rt === "offline" ? "Nincs kapcsolat" : "Kapcsolódás"}</span>
         </span>
         {oppCount > 0 && (
           <span className="flex items-center gap-1">
             <PresenceDot on={onlineCount === oppCount} />
-            {oppCount === 1 ? (onlineCount ? "Ellenfél online" : "Ellenfél offline") : `${onlineCount}/${oppCount} ellenfél online`}
+            {oppCount === 1 ? (onlineCount ? "Ellenfél" : "Ellenfél offline") : `${onlineCount}/${oppCount} ellenfél`}
           </span>
         )}
       </div>
