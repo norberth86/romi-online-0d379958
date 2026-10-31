@@ -420,7 +420,7 @@ function Game({ code, session }: { code: string; session: Session }) {
             if (!pub.handi) return;
             toggle(pub.handi.id);
             setHandiSelected((v) => !v);
-          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-3 text-xs font-bold text-primary">Handi</span></Button>}
+          }}><PlayingCard card={pub.handi} selected={handiSelected} className="rotate-90" /><span className="absolute -bottom-5 text-xs font-bold text-primary">Handi</span></Button>}
           <Button variant="ghost"
             type="button"
             onClick={() => act({ type: "drawStock" })}

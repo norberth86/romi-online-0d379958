@@ -34,7 +34,7 @@ export function PlayingCard({
   const content = joker ? (
     <span className="absolute inset-0 flex flex-col items-center justify-center font-display font-bold text-suit-red">
       <span className="text-[1.6em] leading-none">★</span>
-      <span className="text-[0.75em] tracking-wider">JOKER</span>
+      <span className="text-[0.55em] tracking-tight">JOKER</span>
     </span>
   ) : (
     <>
